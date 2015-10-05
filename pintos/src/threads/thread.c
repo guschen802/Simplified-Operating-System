@@ -261,7 +261,8 @@ thread_priority_comparator (const struct list_elem *a, const struct list_elem *b
 }
 
 /* Return true if thread a's wake up time is earlier than thread b's. */
-bool thread_wakeup_comparator (const struct list_elem *a, const struct list_elem *b, void *aux)
+bool
+thread_wakeup_comparator (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   struct thread *aThread = list_entry(a, struct thread,elem);
   struct thread *bThread = list_entry(b, struct thread,elem);

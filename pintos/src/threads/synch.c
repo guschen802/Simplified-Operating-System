@@ -68,7 +68,8 @@ sema_down (struct semaphore *sema)
   old_level = intr_disable ();
   while (sema->value == 0) 
     {
-      list_push_back (&sema->waiters, &thread_current ()->elem);
+      /* keep semaphore's waiting list priority aware */
+      list_insert_ordered(&sema->waiters, &thread_current ()->elem,thread_priority_comparator,NULL);
       thread_block ();
     }
   sema->value--;
@@ -118,6 +119,10 @@ sema_up (struct semaphore *sema)
                                 struct thread, elem));
   sema->value++;
   intr_set_level (old_level);
+  /* after thread unblock, yield current thread to give any
+   * possible higher priority thread which has just been waked up */
+
+  thread_yield();
 }
 
 static void sema_test_helper (void *sema_);
@@ -251,6 +256,7 @@ struct semaphore_elem
   {
     struct list_elem elem;              /* List element. */
     struct semaphore semaphore;         /* This semaphore. */
+    int priority;                       /* Priority */
   };
 
 /* Initializes condition variable COND.  A condition variable
@@ -295,11 +301,26 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-  list_push_back (&cond->waiters, &waiter.elem);
+
+  /* make condition waiter list priority aware*/
+//  list_push_back (&cond->waiters, &waiter.elem);
+  waiter.priority = thread_get_priority();
+  list_insert_ordered(&cond->waiters, &waiter.elem, waiter_priority_comparator, NULL);
+
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
 }
+
+/* Return true if waiter(semaphore_elem) a's priority is higher*/
+bool
+waiter_priority_comparator(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  struct semaphore_elem *aSemaElem= list_entry(a, struct semaphore_elem,elem);
+  struct semaphore_elem *bSemaElem = list_entry(b, struct semaphore_elem,elem);
+  return aSemaElem->priority > bSemaElem->priority? true:false;
+}
+
 
 /* If any threads are waiting on COND (protected by LOCK), then
    this function signals one of them to wake up from its wait.
