@@ -42,7 +42,7 @@ void cond_signal (struct condition *, struct lock *);
 void cond_broadcast (struct condition *, struct lock *);
 
 /* Comparator */
-bool waiter_priority_comparator(const struct list_elem *a, const struct list_elem *b, void *aux);
+bool semaphore_elem_priority_comparator_less(const struct list_elem *a, const struct list_elem *b, void *aux);
 
 /* Optimization barrier.
 

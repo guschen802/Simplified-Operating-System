@@ -69,7 +69,7 @@ sema_down (struct semaphore *sema)
   while (sema->value == 0) 
     {
       /* keep semaphore's waiting list priority aware */
-      list_insert_ordered(&sema->waiters, &thread_current ()->elem,thread_priority_comparator,NULL);
+      list_insert_ordered(&sema->waiters, &thread_current ()->elem,thread_priority_comparator_larger,NULL);
       thread_block ();
     }
   sema->value--;
@@ -119,10 +119,13 @@ sema_up (struct semaphore *sema)
                                 struct thread, elem));
   sema->value++;
   intr_set_level (old_level);
+
   /* after thread unblock, yield current thread to give any
    * possible higher priority thread which has just been waked up */
-
-  thread_yield();
+  if (intr_context())
+    intr_yield_on_return();
+  else
+    thread_yield();
 }
 
 static void sema_test_helper (void *sema_);
@@ -201,6 +204,14 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+//  /* mlfqs do not need priority donation, keep original mechanism */
+//  if (thread_mlfqs)
+//  {
+//      sema_down (&lock->semaphore);
+//      lock->holder = thread_current ();
+//      return;
+//  }
+
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
 }
@@ -256,7 +267,6 @@ struct semaphore_elem
   {
     struct list_elem elem;              /* List element. */
     struct semaphore semaphore;         /* This semaphore. */
-    int priority;                       /* Priority */
   };
 
 /* Initializes condition variable COND.  A condition variable
@@ -302,23 +312,27 @@ cond_wait (struct condition *cond, struct lock *lock)
   
   sema_init (&waiter.semaphore, 0);
 
-  /* make condition waiter list priority aware*/
-//  list_push_back (&cond->waiters, &waiter.elem);
-  waiter.priority = thread_get_priority();
-  list_insert_ordered(&cond->waiters, &waiter.elem, waiter_priority_comparator, NULL);
-
+  /* The reason why here do not use priority based list is
+   * that it will be hard to reorder the waiter list when
+   * the thread inside change it priority, we choose to deal
+   * with the priority when pop the waiter */
+  list_push_back (&cond->waiters, &waiter.elem);
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
 }
 
-/* Return true if waiter(semaphore_elem) a's priority is higher*/
+/* Return true if waiter(semaphore_elem) a's priority is lower*/
 bool
-waiter_priority_comparator(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+semaphore_elem_priority_comparator_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   struct semaphore_elem *aSemaElem= list_entry(a, struct semaphore_elem,elem);
   struct semaphore_elem *bSemaElem = list_entry(b, struct semaphore_elem,elem);
-  return aSemaElem->priority > bSemaElem->priority? true:false;
+
+  struct thread *aThread = list_entry(list_front(&aSemaElem->semaphore.waiters), struct thread, elem);
+  struct thread *bThread = list_entry(list_front(&bSemaElem->semaphore.waiters), struct thread, elem);
+
+  return aThread->priority < bThread->priority;
 }
 
 
@@ -337,9 +351,14 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
-  if (!list_empty (&cond->waiters)) 
-    sema_up (&list_entry (list_pop_front (&cond->waiters),
-                          struct semaphore_elem, elem)->semaphore);
+  if (!list_empty (&cond->waiters))
+    /* The reason why here do not use priority based list is
+       * that it will be hard to reorder the waiter list when
+       * the thread inside change it priority, we choose to deal
+       * with the priority when pop the waiter */
+    sema_up (&list_entry (list_pop_max(
+	&cond->waiters, semaphore_elem_priority_comparator_less, NULL),
+			  struct semaphore_elem, elem)->semaphore);
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
@@ -356,4 +375,20 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 
   while (!list_empty (&cond->waiters))
     cond_signal (cond, lock);
+}
+
+/* Reset current priority to original priority */
+void
+thread_reset_priority (void)
+{
+  thread_current ()->priority = thread_current ()->priorityOg;
+}
+
+/* Set thread current priority to donated priority,
+ * if donated priority is higher, success and return true
+ * else return false*/
+bool
+thread_set_donated_priority (int donated_priority)
+{
+  thread_current ()->priority = donated_priority;
 }
