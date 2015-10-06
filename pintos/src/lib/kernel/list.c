@@ -274,6 +274,17 @@ list_pop_back (struct list *list)
   return back;
 }
 
+/* Removes the max element according to the given less
+ * comparator from LIST and returns it. Undefined
+ * behavior if LIST is empty before removal. */
+struct list_elem *
+list_pop_max (struct list *list, list_less_func *less, void *aux)
+{
+  struct list_elem *max = list_max(list, less, aux);
+  list_remove (max);
+  return max;
+}
+
 /* Returns the front element in LIST.
    Undefined behavior if LIST is empty. */
 struct list_elem *

@@ -124,6 +124,13 @@ struct list
 
 void list_init (struct list *);
 
+/* Compares the value of two list elements A and B, given
+   auxiliary data AUX.  Returns true if A is less than B, or
+   false if A is greater than or equal to B. */
+typedef bool list_less_func (const struct list_elem *a,
+                             const struct list_elem *b,
+                             void *aux);
+
 /* List traversal. */
 struct list_elem *list_begin (struct list *);
 struct list_elem *list_next (struct list_elem *);
@@ -147,6 +154,7 @@ void list_push_back (struct list *, struct list_elem *);
 struct list_elem *list_remove (struct list_elem *);
 struct list_elem *list_pop_front (struct list *);
 struct list_elem *list_pop_back (struct list *);
+struct list_elem *list_pop_max (struct list *, list_less_func *, void *aux);
 
 /* List elements. */
 struct list_elem *list_front (struct list *);
@@ -158,13 +166,6 @@ bool list_empty (struct list *);
 
 /* Miscellaneous. */
 void list_reverse (struct list *);
-
-/* Compares the value of two list elements A and B, given
-   auxiliary data AUX.  Returns true if A is less than B, or
-   false if A is greater than or equal to B. */
-typedef bool list_less_func (const struct list_elem *a,
-                             const struct list_elem *b,
-                             void *aux);
 
 /* Operations on lists with ordered elements. */
 void list_sort (struct list *,
