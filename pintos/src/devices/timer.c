@@ -106,7 +106,7 @@ timer_sleep (int64_t ticks)
   /* Put current thread into sleeping thread list then block the thread. */
   struct thread *cur = thread_current ();
   cur->wakeup = wakeup;
-  list_insert_ordered(&sleeping_list, &cur->elem, thread_wakeup_comparator, NULL);
+  list_insert_ordered(&sleeping_list, &cur->elem, thread_wakeup_comparator_less, NULL);
   thread_block();
   intr_set_level (old_level);
 }

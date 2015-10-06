@@ -87,7 +87,8 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
+    int priority;                       /* Current Priority (original or donated). */
+    int priorityOg;                     /* Original Priority. */
     int wakeup;                         /* Wake up time */
     struct list_elem allelem;           /* List element for all threads list. */
 
@@ -128,8 +129,8 @@ void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 
 /*thread status comparator*/
-bool thread_priority_comparator (const struct list_elem *a, const struct list_elem *b, void *aux);
-bool thread_wakeup_comparator (const struct list_elem *a, const struct list_elem *b, void *aux);
+bool thread_priority_comparator_larger (const struct list_elem *a, const struct list_elem *b, void *aux);
+bool thread_wakeup_comparator_less (const struct list_elem *a, const struct list_elem *b, void *aux);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
