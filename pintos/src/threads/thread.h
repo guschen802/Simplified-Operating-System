@@ -94,6 +94,7 @@ struct thread
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+    struct list *cur_list;                /* current priority_based_list this thread in. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

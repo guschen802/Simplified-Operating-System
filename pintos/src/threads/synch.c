@@ -32,6 +32,10 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+
+bool thread_set_donated_priority (struct thread *t, int);
+void thread_reset_priority (void);
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -70,6 +74,7 @@ sema_down (struct semaphore *sema)
     {
       /* keep semaphore's waiting list priority aware */
       list_insert_ordered(&sema->waiters, &thread_current ()->elem,thread_priority_comparator_larger,NULL);
+      thread_current ()->cur_list = &sema->waiters;
       thread_block ();
     }
   sema->value--;
@@ -115,8 +120,12 @@ sema_up (struct semaphore *sema)
 
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) 
-    thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                struct thread, elem));
+    {
+      struct thread *t = list_entry (list_pop_front (&sema->waiters), struct thread, elem);
+      t->cur_list = NULL;
+      thread_unblock (t);
+    }
+
   sema->value++;
   intr_set_level (old_level);
 
@@ -204,13 +213,28 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-//  /* mlfqs do not need priority donation, keep original mechanism */
-//  if (thread_mlfqs)
-//  {
-//      sema_down (&lock->semaphore);
-//      lock->holder = thread_current ();
-//      return;
-//  }
+  /* mlfqs do not need priority donation, keep original mechanism */
+  if (thread_mlfqs)
+  {
+      sema_down (&lock->semaphore);
+      lock->holder = thread_current ();
+      return;
+  }
+
+  enum intr_level old_level;
+  old_level = intr_disable ();
+  if (lock->holder!= NULL && lock->holder->priority < thread_current()->priority) {
+	if (lock->holder->cur_list != NULL)
+	  {
+	    list_remove(&lock->holder->elem);
+	    thread_set_donated_priority(lock->holder, thread_current()->priority);
+	    list_insert_ordered(lock->holder->cur_list,&lock->holder->elem, thread_priority_comparator_larger, NULL);
+	  }
+	else
+	  thread_set_donated_priority(lock->holder, thread_current()->priority);
+  }
+  intr_set_level (old_level);
+  thread_yield();
 
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
@@ -246,7 +270,7 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-
+  thread_reset_priority();
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }
@@ -356,6 +380,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
        * that it will be hard to reorder the waiter list when
        * the thread inside change it priority, we choose to deal
        * with the priority when pop the waiter */
+
     sema_up (&list_entry (list_pop_max(
 	&cond->waiters, semaphore_elem_priority_comparator_less, NULL),
 			  struct semaphore_elem, elem)->semaphore);
@@ -388,7 +413,12 @@ thread_reset_priority (void)
  * if donated priority is higher, success and return true
  * else return false*/
 bool
-thread_set_donated_priority (int donated_priority)
+thread_set_donated_priority (struct thread *t, int donated_priority)
 {
-  thread_current ()->priority = donated_priority;
+  if(t->priority < donated_priority)
+    {
+      t->priority = donated_priority;
+      return true;
+    }
+  return false;
 }
