@@ -30,8 +30,8 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
-/* List of sleeping processes in THREAD_BLOCK state, that is, processes
-   that call timer_sleep(). */
+/* List of sleeping processes in THREAD_BLOCK
+ * state, that is, processes that call timer_sleep(). */
 static struct list sleeping_list;
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,

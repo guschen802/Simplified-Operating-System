@@ -17,9 +17,13 @@ FirstName LastName <email@domain.example>
 >> If you have any preliminary comments on your submission, notes for the
 >> TAs, or extra credit, please give them here.
 
+None.
+
 >> Please cite any offline or online sources you consulted while
 >> preparing your submission, other than the Pintos documentation, course
 >> text, lecture notes, and course staff.
+
+None.
 
 			     ALARM CLOCK
 			     ===========
@@ -29,27 +33,65 @@ FirstName LastName <email@domain.example>
 >> A1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+Added static variable in timer.c:
+
+	/* List of sleeping processes in THREAD_BLOCK 
+ 	 * state, that is, processes that call timer_sleep(). */
+	static struct list sleeping_list;
+
+	/*  */
+	static struct semaphore timer_sema;
+
+Added to struct thread:
+
+	/* Owned by timer.c */
+	int wakeup;                         /* Wake up time */
 
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe what happens in a call to timer_sleep(),
 >> including the effects of the timer interrupt handler.
 
+When a thread call timer_sleep(), it will check the ticks first, if
+invalid, the function will return immediately. Then the wakeup time
+of this thread will be calculated and store in its variable: wakeup.
+After that, the thread is blocked and put in a time-sorted list: 
+sleeping_list.
+
+Every time the timer interrupt handler is called, it check the sleeping_list
+start from front of sleeping_list, if the thread reach the wakeup time,
+it is unblocked.
+
 >> A3: What steps are taken to minimize the amount of time spent in
 >> the timer interrupt handler?
+
+When threads putted in sleeping_list, it insert in wakeup time 
+increasing order. This cost O(n) during timer_sleep(), n represent
+the number of thread in sleeping_list. When pop from the sleeping_list
+in timer interrupt handler, it takes O(m) to unblock the thread, m
+represent the number of thread needs to be wakeuped, normally m << n.
 
 ---- SYNCHRONIZATION ----
 
 >> A4: How are race conditions avoided when multiple threads call
 >> timer_sleep() simultaneously?
+Since the only shared variable between multiple threads is sleeping_list,
+and  timer_interrupt() also share sleeping_list, we can only choose
+disabling the interrupter to avoid race condition.
 
 >> A5: How are race conditions avoided when a timer interrupt occurs
 >> during a call to timer_sleep()?
+Since the interrupt is disabled in timer_sleep(), there will be no 
+timer interrupt during a call timer_sleep().
 
 ---- RATIONALE ----
 
 >> A6: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
+
+It is straightforward, only need to maintain a list of sleeping thread,
+and check the front element of list every timer tick.
+
 
 			 PRIORITY SCHEDULING
 			 ===================
