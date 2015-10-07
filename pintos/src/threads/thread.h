@@ -88,13 +88,11 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Current Priority (original or donated). */
-    int priorityOg;                     /* Original Priority. */
-    int wakeup;                         /* Wake up time */
+    int donated_priority;                     /* donated Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    struct list *cur_list;                /* current priority_based_list this thread in. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -103,6 +101,9 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+
+    /* Owned by timer.c */
+    int wakeup;                         /* Wake up time */
   };
 
 /* If false (default), use round-robin scheduler.
@@ -131,6 +132,7 @@ void thread_yield (void);
 
 /*thread status comparator*/
 bool thread_priority_comparator_larger (const struct list_elem *a, const struct list_elem *b, void *aux);
+bool thread_priority_comparator_less (const struct list_elem *a, const struct list_elem *b, void *aux);
 bool thread_wakeup_comparator_less (const struct list_elem *a, const struct list_elem *b, void *aux);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */

@@ -70,6 +70,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+int thread_get_priority_target (struct thread *t);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -245,9 +246,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  /*push to list in sorted order.*/
-  list_insert_ordered(&ready_list, &t->elem,thread_priority_comparator_larger,NULL);
-  t->cur_list = &ready_list;
+  list_push_back(&ready_list, &t->elem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -258,7 +257,16 @@ thread_priority_comparator_larger (const struct list_elem *a, const struct list_
 {
   struct thread *aThread = list_entry(a, struct thread,elem);
   struct thread *bThread = list_entry(b, struct thread,elem);
-  return aThread->priority > bThread->priority;
+  return thread_get_priority_target(aThread) > thread_get_priority_target(bThread);
+}
+
+/* Returns True if thread a's priority is less than thread b's. */
+bool
+thread_priority_comparator_less (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  struct thread *aThread = list_entry(a, struct thread,elem);
+  struct thread *bThread = list_entry(b, struct thread,elem);
+  return thread_get_priority_target(aThread) < thread_get_priority_target(bThread);
 }
 
 /* Return true if thread a's wake up time is earlier than thread b's. */
@@ -337,8 +345,8 @@ thread_yield (void)
 
   /*put current thread in ready list in priority aware order*/
   if (cur != idle_thread){
-      list_insert_ordered(&ready_list, &cur->elem,thread_priority_comparator_larger,NULL);
-      cur->cur_list = &ready_list;
+      list_push_back(&ready_list, &cur->elem);
+//      list_insert_ordered(&ready_list, &cur->elem,thread_priority_comparator_larger,NULL);
   }
 
   cur->status = THREAD_READY;
@@ -367,12 +375,7 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current()->priorityOg = new_priority;
-
-  /* keep current priority (donation) if new priority is lower */
-  thread_current ()->priority =
-      thread_current ()->priority > new_priority?
-	  thread_current ()->priority : new_priority;
+  thread_current()->priority = new_priority;
   thread_yield();
 }
 
@@ -380,7 +383,14 @@ thread_set_priority (int new_priority)
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
+  return thread_current ()->donated_priority > thread_current ()->priority ? thread_current ()->donated_priority : thread_current ()->priority;
+}
+
+/* Returns the current thread's priority. */
+int
+thread_get_priority_target (struct thread *t)
+{
+  return t->donated_priority > t->priority? t->donated_priority: t->priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -497,8 +507,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priorityOg = priority;
   t->priority = priority;
+  t->donated_priority = -1;
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
@@ -528,9 +538,7 @@ next_thread_to_run (void)
     return idle_thread;
   else
     {
-      struct thread* t = list_entry (list_pop_front (&ready_list), struct thread, elem);
-      t->cur_list = NULL;
-      return t;
+      return list_entry (list_pop_max(&ready_list, thread_priority_comparator_less, NULL), struct thread, elem);
     }
 
 }
