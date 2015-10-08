@@ -108,7 +108,7 @@ struct thread
     int donated_priority;               /* Donated Priority. */
     struct list lock_list;              /* Locks current holding. */
     struct lock *waiting_lock;          /* Lock current waiting for. */
-    static struct semaphore semaphore;  /* semaphore for synchronize on lock_list and waiting_lock*/
+//    static struct semaphore semaphore;  /* semaphore for synchronize on lock_list and waiting_lock*/
   };
 
 /* If false (default), use round-robin scheduler.
