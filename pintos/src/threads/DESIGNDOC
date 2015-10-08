@@ -6,11 +6,11 @@
 				   
 ---- GROUP ----
 
->> Fill in the names and email addresses of your group members.
+>> Fill in the names and email addresses of your group members
 
 ChunYu Chen <chunyuch@buffalo.edu>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Shuang Wu <sw36@buffalo.edu>
+Jun Wang <jwang79@buffalo.edu>
 
 ---- PRELIMINARIES ----
 
@@ -102,20 +102,63 @@ and check the front element of list every timer tick.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+Added to struct thread:
+	/* Owned by synch.c. */
+	int donated_priority;               /* Donated Priority. */
+	struct list lock_list;              /* Locks current holding. */
+	struct lock *waiting_lock;          /* Lock current waiting for. */
+	/*  */
+
 >> B2: Explain the data structure used to track priority donation.
 >> Use ASCII art to diagram a nested donation.  (Alternately, submit a
 >> .png file.)
+
+There is a lock_list in struct thread tracking all locks it currently holding
+in order to deal with multiple lock's donation. 
+
+And waiting_lock in struct thread with holder in struct lock help tracking 
+the lock nested donating problem, as shown below.
+
+   ------      	                             ------                                   ------
+  | 	 | waiting_lock  +--------+ holder  |      | waiting_lock +--------+ holder  |      |
+  |Thread|-------------> | Lock2  |========>|Thread|------------->| Lock1  |========>|Thread|
+  | High |	         +--------+         | Mid  |              +--------+         | Low  |
+   ------                                    ------                                   ------
 
 ---- ALGORITHMS ----
 
 >> B3: How do you ensure that the highest priority thread waiting for
 >> a lock, semaphore, or condition variable wakes up first?
 
+When sema_up() / cond_signal() is called, the thread/waiter is pop in
+highest-priority order using a nelyw added function list_pop_max(). 
+Moreover, lock is implemented using semephore, so it will unblock the
+highest-priority thread in semaphore's waiting list.
+
 >> B4: Describe the sequence of events when a call to lock_acquire()
 >> causes a priority donation.  How is nested donation handled?
 
+1. if lock is hold, goto Step.2, else goto Step.5
+2. compare holder's priority to itself, if lower, donate priority to holder
+3. if holder also waiting for a lock (waiting_lock != NULL), then donate 
+   the new priority to the lock's holder it is waiting for.
+4. continue Step.6 to ensure all nested lock has the same highest priority.
+5. sema_down(&lock->semaphore)
+6. set lock's holder to current thread
+7. put lock in thread's lock_list
+
+Step 3~4 handle nested donation.
+
 >> B5: Describe the sequence of events when lock_release() is called
 >> on a lock that a higher-priority thread is waiting for.
+
+1. remove lock from thread's lock_list
+2. if thread's lock_list is not empty, goto Step.3, else goto Step.5
+3. pick the max priority in all the lock's semaphore's waiting thread,
+   if higher then current thread's original priority, reset current
+   donated_priority.
+4. set donated_priority to original priority.
+5. sema_up()
 
 ---- SYNCHRONIZATION ----
 
@@ -123,10 +166,23 @@ and check the front element of list every timer tick.
 >> how your implementation avoids it.  Can you use a lock to avoid
 >> this race?
 
+The potential share variable is the waiting_lock this thread is waiting,
+since whenever the priority is update by user, it may need to handle
+priority donation. Because we are share the variable with lock mechanism,
+we surely can not use lock here, even the semephore, it will cause another
+priority donation problem, so we need to turn off the interrupter here. 
+
 ---- RATIONALE ----
 
 >> B7: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
+
+It is simple, by using a donated_priority variable, we only need to update
+it when necessary, our first design do not have variable donated_priority,
+whenever the scheduler need to pop a highest priority thread, it will go
+through all the lock_list inside each thread, and find the highest one,
+it is not only too complicated, time comsuming, but also has potential 
+hazard of get into a infinite loop or causing stack to overflow.
 
 			  ADVANCED SCHEDULER
 			  ==================
