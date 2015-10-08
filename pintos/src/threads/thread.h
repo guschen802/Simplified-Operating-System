@@ -87,8 +87,7 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Current Priority (original or donated). */
-    int donated_priority;                     /* donated Priority. */
+    int priority;                       /* Original Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
@@ -104,6 +103,12 @@ struct thread
 
     /* Owned by timer.c */
     int wakeup;                         /* Wake up time */
+
+    /* Owned by synch.c. */
+    int donated_priority;               /* Donated Priority. */
+    struct list lock_list;              /* Locks current holding. */
+    struct lock *waiting_lock;          /* Lock current waiting for. */
+    static struct semaphore semaphore;  /* semaphore for synchronize on lock_list and waiting_lock*/
   };
 
 /* If false (default), use round-robin scheduler.
