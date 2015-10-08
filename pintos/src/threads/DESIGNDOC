@@ -1,5 +1,5 @@
 			+--------------------+
-			|        CS 140      |
+			|       CSE 521      |
 			| PROJECT 1: THREADS |
 			|   DESIGN DOCUMENT  |
 			+--------------------+
@@ -9,8 +9,8 @@
 >> Fill in the names and email addresses of your group members
 
 ChunYu Chen <chunyuch@buffalo.edu>
-Shuang Wu <sw36@buffalo.edu>
-Jun Wang <jwang79@buffalo.edu>
+Shuang Wu   <swu36@buffalo.edu>
+Jun    Wang <jwang79@buffalo.edu>
 
 ---- PRELIMINARIES ----
 
@@ -184,7 +184,7 @@ through all the lock_list inside each thread, and find the highest one,
 it is not only too complicated, time comsuming, but also has potential 
 hazard of get into a infinite loop or causing stack to overflow.
 
-			  ADVANCED SCHEDULER
+                          ADVANCED SCHEDULER
 			  ==================
 
 ---- DATA STRUCTURES ----
@@ -192,6 +192,15 @@ hazard of get into a infinite loop or causing stack to overflow.
 >> C1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+
+Inside thread.h, we added two variables into struct thread:
+
+int nice;		/* Niceness value for advanced scheduler.           */
+int recent_cpu;		/* Recent cpu ticks for advanced scheduler.         */
+
+Inside thread.c, we added one static variable:
+
+static int load_avg;	/* System-wide load average for advanced scheduler. */
 
 ---- ALGORITHMS ----
 
@@ -203,23 +212,51 @@ hazard of get into a infinite loop or causing stack to overflow.
 timer  recent_cpu    priority   thread
 ticks   A   B   C   A   B   C   to run
 -----  --  --  --  --  --  --   ------
- 0
- 4
- 8
-12
-16
-20
-24
-28
-32
-36
+ 0	0   0   0  63  61  59	A
+ 4	4   0   0  62  61  59	A
+ 8	8   0   0  61  61  59	B
+12	8   4   0  61  60  59	A
+16     12   4   0  60  60  59	B
+20     12   8   0  60  59  59	A
+24     16   8   0  59  59  59	C
+28     16   8   4  59  59  58	B
+32     16  12   4  59  58  58	A
+36     20  12   4  58  58  58	C
 
 >> C3: Did any ambiguities in the scheduler specification make values
 >> in the table uncertain?  If so, what rule did you use to resolve
 >> them?  Does this match the behavior of your scheduler?
 
+The ambiguity is that the advanced scheduler requires us to perform round-
+robin among threads with same priority, but it doesn't indicate how to choose
+among them.
+
+Since threads with same priority should have same weight to the system,
+one particular thread shouldn't occupy CPU time too much. As a result,
+we deceide to implement round-robin policy in a way so that the scheduler
+chooses the thread with the least recent_cpu to run when there are multiple
+threads with the highest priority. In this way, threads are considered 
+equal when they have identical priority.
+
 >> C4: How is the way you divided the cost of scheduling between code
 >> inside and outside interrupt context likely to affect performance?
+
+With the introduced variables and functions above, there will be some
+system overhead inserted into interrupt handler: 
+
+1. For every tick, the recent_cpu value of the current thread should 
+be incremented by 1.
+2. For every fourth tick, the priority of the current thread should be
+updated and the thread should be pushed back to the ready list.
+3. For every second, the recent_cpu is updated for every thread. As a
+result, the priority of each thread should be recalculated.
+
+From the above analysis, it is clear that system overhead for the first
+two factors are low, but the third factor would introduce a significant
+amount of computation for systems with high count of threads.
+
+As for the situation of outside interrupt context, the only thing different
+is that a thread is allowed to reset its niceness.
 
 ---- RATIONALE ----
 
@@ -228,12 +265,26 @@ ticks   A   B   C   A   B   C   to run
 >> time to work on this part of the project, how might you choose to
 >> refine or improve your design?
 
+Our design is compatible with the priority model, and it only introduces three
+variables. So the system overhead is relatively low. Also, since we treat
+threads equally, system concurrency is good.
+
+The disadvantage of our design is that it cannot prevent or detect deadlocks.
+The 4.4BSD scheduler is an advanced priority scheduler, but it does nothing
+with deadlocks. So if given more time, we can refine our design by introducing
+a mechanism to prevent or detect deadlocks.
+
 >> C6: The assignment explains arithmetic for fixed-point math in
 >> detail, but it leaves it open to you to implement it.  Why did you
 >> decide to implement it the way you did?  If you created an
 >> abstraction layer for fixed-point math, that is, an abstract data
 >> type and/or a set of functions or macros to manipulate fixed-point
 >> numbers, why did you do so?  If not, why not?
+
+We created a head file and use macros to manipulate all the operations 
+for fixed-point arithmetic. In this way, our code become more readable
+and easier to test. Also, it will make change much easier (for instances,
+depth of the fixed-point arithmetic).
 
 			   SURVEY QUESTIONS
 			   ================
