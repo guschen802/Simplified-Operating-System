@@ -102,13 +102,12 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
 
     /* Owned by timer.c */
-    int wakeup;                         /* Wake up time */
+    int64_t wakeup;                         /* Wake up time */
 
     /* Owned by synch.c. */
     int donated_priority;               /* Donated Priority. */
     struct list lock_list;              /* Locks current holding. */
     struct lock *waiting_lock;          /* Lock current waiting for. */
-//    static struct semaphore semaphore;  /* semaphore for synchronize on lock_list and waiting_lock*/
   };
 
 /* If false (default), use round-robin scheduler.

@@ -100,7 +100,8 @@ timer_sleep (int64_t ticks)
   int64_t wakeup = timer_ticks () + ticks;
 
   ASSERT (intr_get_level () == INTR_ON);
-  /* Disable the interrupt in order to call thread_block(). */
+  /* Disable the interrupt in order to call thread_block().
+   * And also share  sleeping_list with timer_interrupt. */
   enum intr_level old_level = intr_disable ();
 
   /* Put current thread into sleeping thread list then block the thread. */
@@ -188,16 +189,18 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
 
   /* Unblock thread in sleeping list if ticks reach the point */
-  struct list_elem *p;
-  for (p = list_begin(&sleeping_list); p != list_end(&sleeping_list);) {
+  while (!list_empty(&sleeping_list))
+    {
+      struct list_elem *p = list_front(&sleeping_list);
       struct thread *t = list_entry(p, struct thread, elem);
 
-      if(t->wakeup <= ticks) {
-	  p = list_remove(p);
+      if(t->wakeup <= ticks)
+	{
+	  list_remove(p);
 	  thread_unblock(t);
-      } else {
-	  break;
-      }
+        }
+      else
+	break;
   }
 
   thread_tick ();

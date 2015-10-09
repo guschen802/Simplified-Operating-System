@@ -251,14 +251,6 @@ thread_unblock (struct thread *t)
   intr_set_level (old_level);
 }
 
-/* Return true if thread a's wake up time is earlier than thread b's. */
-bool
-thread_wakeup_comparator_less (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
-{
-  struct thread *aThread = list_entry(a, struct thread,elem);
-  struct thread *bThread = list_entry(b, struct thread,elem);
-  return aThread->wakeup < bThread->wakeup;
-}
 /* Returns the name of the running thread. */
 const char *
 thread_name (void) 
@@ -381,8 +373,7 @@ thread_reset_priority (void)
 int
 thread_get_priority (void) 
 {
-  struct thread *cur = thread_current ();
-  return cur->donated_priority;
+  return thread_current ()->donated_priority;
 }
 
 /* Returns the current thread's priority. */
@@ -509,6 +500,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->donated_priority = priority;
   list_init(&t->lock_list);
+  t->waiting_lock = NULL;
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
@@ -634,4 +626,13 @@ thread_priority_comparator_less (const struct list_elem *a, const struct list_el
   struct thread *aThread = list_entry(a, struct thread,elem);
   struct thread *bThread = list_entry(b, struct thread,elem);
   return thread_get_priority_target(aThread) < thread_get_priority_target(bThread);
+}
+
+/* Return true if thread a's wake up time is earlier than thread b's. */
+bool
+thread_wakeup_comparator_less (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  struct thread *aThread = list_entry(a, struct thread,elem);
+  struct thread *bThread = list_entry(b, struct thread,elem);
+  return aThread->wakeup < bThread->wakeup;
 }

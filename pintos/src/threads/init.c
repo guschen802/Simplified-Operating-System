@@ -81,9 +81,6 @@ main (void)
   /* Clear BSS. */  
   bss_init ();
 
-  /* Initialize Synchronization */
-    sync_init();
-
   /* Break command line into arguments and parse options. */
   argv = read_command_line ();
   argv = parse_options (argv);
