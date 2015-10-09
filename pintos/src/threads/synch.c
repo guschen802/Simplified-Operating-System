@@ -33,8 +33,8 @@
 #include "threads/thread.h"
 
 
-bool thread_set_donated_priority (struct thread *t, int);
-void thread_reset_priority (void);
+void thread_set_donated_priority (struct thread *t, int);
+int get_max_lock_priority(struct lock *lock);
 
 static struct semaphore synch_sema;
 
@@ -235,6 +235,7 @@ lock_acquire (struct lock *lock)
 
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
+  list_push_back(&thread_current()->lock_list, &lock->elem);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -268,8 +269,10 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
   
+  list_remove(&lock->elem);
+
   thread_reset_priority();
-  
+
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }
@@ -377,25 +380,17 @@ cond_broadcast (struct condition *cond, struct lock *lock)
     cond_signal (cond, lock);
 }
 
-/* Reset current priority to original priority */
-void
-thread_reset_priority (void)
-{
-  thread_current ()->donated_priority = -1;
-}
-
 /* Set thread current priority to donated priority,
  * if donated priority is higher, success and return true
  * else return false*/
-bool
+void
 thread_set_donated_priority (struct thread *t, int donated_priority)
 {
-  if(t->priority < donated_priority)
-    {
-      t->donated_priority = donated_priority;
-      return true;
-    }
-  return false;
+  if(donated_priority > t->priority)
+    t->donated_priority = donated_priority;
+  else
+  /* If donated priority is lower than original, then reset. */
+    t->donated_priority = t->priority;
 }
 
 /* Return true if waiter(semaphore_elem) a's priority is lower*/
@@ -408,5 +403,21 @@ semaphore_elem_priority_comparator_less(const struct list_elem *a, const struct 
   struct thread *aThread = list_entry(list_front(&aSemaElem->semaphore.waiters), struct thread, elem);
   struct thread *bThread = list_entry(list_front(&bSemaElem->semaphore.waiters), struct thread, elem);
 
-  return aThread->priority < bThread->priority;
+  return aThread->donated_priority < bThread->donated_priority;
 }
+
+/* Get the max priority of the thread in Lock's semephore's waiter list. */
+int get_max_lock_priority(struct lock *lock)
+{
+  ASSERT(lock != NULL);
+  if (list_empty(&lock->semaphore.waiters))
+    return PRI_MIN;
+  else
+    {
+      return thread_get_priority_target(
+	  list_entry(list_max(
+	      &lock->semaphore.waiters, thread_priority_comparator_less, NULL),
+		     struct thread,elem));
+    }
+}
+

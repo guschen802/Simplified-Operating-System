@@ -352,22 +352,44 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current()->priority = new_priority;
+  struct thread *cur = thread_current();
+  cur->priority = new_priority;
+  if (cur->donated_priority < new_priority)
+    cur->donated_priority = cur->priority;
+  else
+    thread_reset_priority();
   thread_yield();
+}
+
+void
+thread_reset_priority (void)
+{
+  struct thread *cur = thread_current();
+  int max = cur->priority;
+  struct list_elem *it;
+  for (it = list_begin(&cur->lock_list); it != list_end(&cur->lock_list); it = list_next(it))
+    {
+      struct lock *tmp_lock = list_entry(it, struct lock, elem);
+      int max_lock_priority = get_max_lock_priority(tmp_lock);
+      if (max_lock_priority > max)
+	max = max_lock_priority;
+    }
+  thread_set_donated_priority(cur, max);
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->donated_priority > thread_current ()->priority ? thread_current ()->donated_priority : thread_current ()->priority;
+  struct thread *cur = thread_current ();
+  return cur->donated_priority;
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority_target (struct thread *t)
 {
-  return t->donated_priority > t->priority? t->donated_priority: t->priority;
+  return t->donated_priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -485,7 +507,8 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
-  t->donated_priority = -1;
+  t->donated_priority = priority;
+  list_init(&t->lock_list);
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
@@ -603,15 +626,6 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
-
-/* Returns True if thread a's priority is more than thread b's. */
-bool
-thread_priority_comparator_larger (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
-{
-  struct thread *aThread = list_entry(a, struct thread,elem);
-  struct thread *bThread = list_entry(b, struct thread,elem);
-  return thread_get_priority_target(aThread) > thread_get_priority_target(bThread);
-}
 
 /* Returns True if thread a's priority is less than thread b's. */
 bool
