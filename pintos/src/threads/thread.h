@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "fixed-point.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -108,6 +109,10 @@ struct thread
     int donated_priority;               /* Donated Priority. */
     struct list lock_list;              /* Locks current holding. */
     struct lock *waiting_lock;          /* Lock current waiting for. */
+
+    /* Owned by thread.c. */
+    fp_real recent_cpu;                 /* CPU time the thread recent received.*/
+    int nice;                           /* The nice value for mlfqs. */
   };
 
 /* If false (default), use round-robin scheduler.
@@ -137,6 +142,7 @@ void thread_yield (void);
 /*thread status comparator*/
 bool thread_priority_comparator_less (const struct list_elem *a, const struct list_elem *b, void *aux);
 bool thread_wakeup_comparator_less (const struct list_elem *a, const struct list_elem *b, void *aux);
+bool thread_recent_cpu_comparator_less (const struct list_elem *a, const struct list_elem *b, void *aux);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
