@@ -155,6 +155,7 @@ struct list_elem *list_remove (struct list_elem *);
 struct list_elem *list_pop_front (struct list *);
 struct list_elem *list_pop_back (struct list *);
 struct list_elem *list_pop_max (struct list *, list_less_func *, void *aux);
+struct list_elem *list_pop_min (struct list *, list_less_func *, void *aux);
 
 /* List elements. */
 struct list_elem *list_front (struct list *);

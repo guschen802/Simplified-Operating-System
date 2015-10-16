@@ -278,11 +278,22 @@ list_pop_back (struct list *list)
  * comparator from LIST and returns it. Undefined
  * behavior if LIST is empty before removal. */
 struct list_elem *
-list_pop_max (struct list *list, list_less_func *less, void *aux)
+list_pop_max (struct list *list, list_less_func *less, void *aux UNUSED)
 {
   struct list_elem *max = list_max(list, less, aux);
   list_remove (max);
   return max;
+}
+
+/* Removes the min element according to the given less
+ * comparator from LIST and returns it. Undefined
+ * behavior if LIST is empty before removal. */
+struct list_elem *
+list_pop_min (struct list *list, list_less_func *less, void *aux UNUSED)
+{
+  struct list_elem *min = list_min(list, less, aux);
+  list_remove (min);
+  return min;
 }
 
 /* Returns the front element in LIST.
