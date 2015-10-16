@@ -33,10 +33,11 @@
 #include "threads/thread.h"
 
 /* Function Template. */
-void thread_set_donated_priority (struct thread *t, int);
-int get_max_lock_priority(struct lock *lock);
 void donate_priority(struct lock *lock, int donated_priority);
 int thread_get_priority_target(struct thread *t);
+void thread_reset_priority (void);
+int get_max_lock_priority(struct lock *lock);
+void thread_set_donated_priority (struct thread *t, int);
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
@@ -426,5 +427,28 @@ void donate_priority(struct lock *lock, int new_priority)
       thread_set_donated_priority(lock->holder, new_priority);
       donate_priority(lock->holder->waiting_lock, new_priority);
     }
+}
+
+/* For priority donation, once a lock is released,
+ * it will reset the thread's priority either to
+ * original or the highest priority of the remaining
+ * holding locks.*/
+void
+thread_reset_priority (void)
+{
+  /* Multi-level feedback scheduler
+   * should not involve priority donation.  */
+  ASSERT(!thread_mlfqs);
+  struct thread *cur = thread_current();
+  int max = cur->priority;
+  struct list_elem *it;
+  for (it = list_begin(&cur->lock_list); it != list_end(&cur->lock_list); it = list_next(it))
+    {
+      struct lock *tmp_lock = list_entry(it, struct lock, elem);
+      int max_lock_priority = get_max_lock_priority(tmp_lock);
+      if (max_lock_priority > max)
+	max = max_lock_priority;
+    }
+  thread_set_donated_priority(cur, max);
 }
 

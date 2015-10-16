@@ -78,8 +78,8 @@ static tid_t allocate_tid (void);
 int thread_get_priority_target (struct thread *t);
 
 /* mlfqs calculation function */
-static void thread_increase1_recent_cpu ();
-static void update_load_avg();
+static void thread_increase1_recent_cpu (void);
+static void update_load_avg(void);
 static void thread_recalculate_recent_cpu (struct thread *t);
 static void thread_update_priority (struct thread *t);
 
@@ -406,29 +406,6 @@ thread_set_priority (int new_priority)
   else
     thread_reset_priority();
   thread_yield();
-}
-
-/* For priority donation, once a lock is released,
- * it will reset the thread's priority either to
- * original or the highest priority of the remaining
- * holding locks.*/
-void
-thread_reset_priority (void)
-{
-  /* Multi-level feedback scheduler
-   * should not involve priority donation.  */
-  ASSERT(!thread_mlfqs);
-  struct thread *cur = thread_current();
-  int max = cur->priority;
-  struct list_elem *it;
-  for (it = list_begin(&cur->lock_list); it != list_end(&cur->lock_list); it = list_next(it))
-    {
-      struct lock *tmp_lock = list_entry(it, struct lock, elem);
-      int max_lock_priority = get_max_lock_priority(tmp_lock);
-      if (max_lock_priority > max)
-	max = max_lock_priority;
-    }
-  thread_set_donated_priority(cur, max);
 }
 
 /* Returns the current thread's priority. */
