@@ -60,8 +60,8 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
-fp_real load_avg;               /* load-avg for */
-int ready_threads;		/* thread count in ready list. */
+static fp_real load_avg;               /* System-wide load average for advanced scheduler. */
+static int ready_threads;	       /* thread count in ready list. */
 
 static void kernel_thread (thread_func *, void *aux);
 
