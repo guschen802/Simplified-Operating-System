@@ -195,12 +195,13 @@ hazard of get into a infinite loop or causing stack to overflow.
 
 Inside thread.h, we added two variables into struct thread:
 
-int nice;		/* Niceness value for advanced scheduler.           */
-int recent_cpu;		/* Recent cpu ticks for advanced scheduler.         */
+int nice;		    /* Niceness value for advanced scheduler.           */
+fp_real recent_cpu;	    /* Recent cpu ticks for advanced scheduler.         */
 
 Inside thread.c, we added one static variable:
 
-static int load_avg;	/* System-wide load average for advanced scheduler. */
+static fp_real load_avg;    /* System-wide load average for advanced scheduler. */
+static int ready_threads;   /* thread count in ready list. */
 
 ---- ALGORITHMS ----
 
