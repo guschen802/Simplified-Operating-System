@@ -219,7 +219,9 @@ lock_acquire (struct lock *lock)
     {
       if (!sema_try_down(&lock->semaphore))
           {
-            //TODO: Here disable the interrupter, need to verify the possibility not using it.
+            /* Here disable the interrupter, in order to modified the priority, we cannot
+             * use semaphore here because it will cause another priority inversion problem
+             * since what we are doing here is to deal with the priority inversion.*/
             enum intr_level old_level;
             thread_current()->waiting_lock = lock;
             old_level = intr_disable ();
