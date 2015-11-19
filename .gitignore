@@ -1,2 +1,6 @@
 **/*~
 **/*o
+pintos/.cproject
+pintos/.project
+pintos/.settings
+**/*.a
