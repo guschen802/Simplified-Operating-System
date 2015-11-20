@@ -636,6 +636,14 @@ hex_dump (uintptr_t ofs, const void *buf_, size_t size, bool ascii)
     }
 }
 
+/* dump */
+void
+stack_dump (char* msg, void* esp)
+{
+  printf(msg);
+  void* phy = 0xc0000000;
+  hex_dump((int)esp, esp, phy - esp,true);
+}
 /* Prints SIZE, which represents a number of bytes, in a
    human-readable format, e.g. "256 kB". */
 void
