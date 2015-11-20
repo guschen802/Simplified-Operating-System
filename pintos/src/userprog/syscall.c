@@ -3,8 +3,21 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "lib/debug.h"
+#include "devices/shutdown.h"
+#include "lib/stdio.h"
+#include "lib/kernel/stdio.h"
 
 static void syscall_handler (struct intr_frame *);
+static void get_arg(int* arg, int count, void* esp);
+static int get_user (const uint8_t *uaddr);
+static bool put_user (uint8_t *udst, uint8_t byte);
+static void copy_data(uint8_t *uaddr, uint8_t *dst, int size);
+static void sys_halt(void);
+static void sys_exit(void);
+static int sys_write(int fd, void *buffer, unsigned size);
+
 
 void
 syscall_init (void) 
@@ -15,6 +28,115 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-  printf ("system call!\n");
-  thread_exit ();
+  int syscall_nr = *(int*)f->esp;
+  int arg[3];
+
+  switch (syscall_nr)
+  {
+    case SYS_HALT:
+      sys_halt();
+      break;
+    case SYS_EXIT:
+      sys_exit();
+      break;
+    case SYS_EXEC:
+    case SYS_WAIT:
+    case SYS_CREATE:
+    case SYS_REMOVE:
+    case SYS_OPEN:
+    case SYS_FILESIZE:
+    case SYS_READ:
+      printf("SYSCALL:%d NOT IMPLEMENTED YET!\n", syscall_nr);
+      sys_exit();
+      break;
+    case SYS_WRITE:
+      get_arg(arg,3, f->esp);
+      f->eax = sys_write(arg[0], arg[1], arg[2]);
+      break;
+    case SYS_SEEK:
+    case SYS_TELL:
+    case SYS_CLOSE:
+      printf("SYSCALL: %d NOT IMPLEMENTED YET!\n", syscall_nr);
+      sys_exit();
+      break;
+    default:
+      printf ("PANIC! UNKNOWN SYSCALL NUMBER: %d\n", syscall_nr);
+      sys_exit();
+  }
+
 }
+
+static void
+get_arg(int* arg, int count, void* esp)
+{
+  int i;
+  for (i = 0; i < count; i++)
+    {
+      uint8_t* ptr = (uint8_t*)((int*)esp +1 +i);
+      copy_data(ptr, (uint8_t *)&arg[i], sizeof arg[0]);
+    }
+}
+
+/* Reads a byte at user virtual address UADDR.
+UADDR must be below PHYS_BASE.
+Returns the byte value if successful, -1 if a segfault
+occurred. */
+static int
+get_user (const uint8_t *uaddr)
+{
+  int result;
+  asm ("movl $1f, %0; movzbl %1, %0; 1:"
+  : "=&a" (result) : "m" (*uaddr));
+  ASSERT(result!=-1);
+  return result;
+}
+
+/* Writes BYTE to user address UDST.
+UDST must be below PHYS_BASE.
+Returns true if successful, false if a segfault occurred. */
+static bool
+put_user (uint8_t *udst, uint8_t byte)
+{
+  int error_code;
+  asm ("movl $1f, %0; movb %b2, %1; 1:"
+  : "=&a" (error_code), "=m" (*udst) : "q" (byte));
+  return error_code != -1;
+}
+
+static void
+copy_data(uint8_t *uaddr, uint8_t *dst, int size)
+{
+  int i;
+  for (i = 0; i < size; i++, dst++, uaddr++)
+    {
+      ASSERT(is_user_vaddr((const void *)uaddr));
+      *dst = (uint8_t)get_user((uint8_t*)uaddr);
+    }
+}
+static void
+sys_halt(void)
+{
+  shutdown_power_off();
+}
+
+static void
+sys_exit(void)
+{
+  thread_exit();
+}
+
+static int sys_write(int fd, void *buffer, unsigned size)
+{
+  if (fd == STDOUT_FILENO)
+    {
+      putbuf(buffer, size);
+      return size;
+    }
+  else
+    {
+      printf("SYS_WRITE: write to file not implemented!\n");
+    }
+  return 0;
+}
+
+
