@@ -20,6 +20,26 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool parse_command(uint8_t* kpage, uint8_t* upage, const char* command_, void** esp);
+static void* push (uint8_t* kpage, size_t* available,const void* data, size_t size);
+
+static void*
+push (uint8_t* kpage, size_t* available,const void* data, size_t size)
+{
+  /* Data is pushed in size of 4 bytes. */
+  size_t filled_size = ROUND_UP(size, sizeof(uint32_t));
+
+  /* Check page available.*/
+  if (filled_size > *available)
+    return NULL;
+
+  /* Push data on page downward. */
+  memcpy(kpage + *available - size, data, size);
+  *available -= filled_size;
+
+  /* Return start pointer of pushed data. */
+  return kpage + *available + filled_size - size;
+}
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -30,16 +50,21 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
-
+  char thread_name[NAME_MAX + 2];
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
+
   strlcpy (fn_copy, file_name, PGSIZE);
+  strlcpy (thread_name, file_name, sizeof thread_name);
+  char* end = strrchr(thread_name, ' ');
+  if (end != NULL)
+    *end = '\0';
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (thread_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -199,7 +224,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (const char* command, void **esp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -210,7 +235,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool
-load (const char *file_name, void (**eip) (void), void **esp) 
+load (const char *command, void (**eip) (void), void **esp)
 {
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
@@ -226,6 +251,12 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
+  char file_name[NAME_MAX + 2];
+  strlcpy (file_name, command, sizeof file_name);
+    char* end = strrchr(file_name, ' ');
+    if (end != NULL)
+      *end = '\0';
+
   file = filesys_open (file_name);
   if (file == NULL) 
     {
@@ -306,7 +337,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (command, esp))
     goto done;
 
   /* Start address. */
@@ -431,21 +462,66 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (const char* command, void **esp)
 {
-  uint8_t *kpage;
-  bool success = false;
+  uint8_t *kpage, *upage;
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
+  upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  if (kpage != NULL && install_page (upage, kpage, true) && parse_command(kpage,upage , command, esp))
+      return true;
+
+  return false;
+}
+
+static bool
+parse_command(uint8_t* kpage, uint8_t* upage, const char* command_, void** esp)
+{
+  *esp = PHYS_BASE;
+  int argc = 0;
+  size_t available = PGSIZE;
+
+  /* Push entire command line, no need to be reversed,
+   * will be access by pointers. */
+  char* command = push(kpage,&available, command_, strlen(command_) + 1);
+  if (command == NULL)
+    return false;
+
+ char* word_align_return = NULL;
+  if (push(kpage, &available,&word_align_return, sizeof word_align_return) == NULL)
+    return false;
+
+  char* token;
+
+  char *save_ptr;
+  for (token = strtok_r(command, " ", &save_ptr); token !=NULL; token = strtok_r(NULL, " ", &save_ptr))
     {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE - 12;
-      else
-        palloc_free_page (kpage);
+      uint8_t* uaddr = upage + (token - (char*)kpage);
+      if (push(kpage, &available,&uaddr, sizeof token) == NULL)
+          return false;
+       argc++;
     }
-  return success;
+
+  char** argv = (char**)(upage + available);
+  if (push(kpage, &available,&argv, sizeof argv) == NULL)
+      return false;
+
+  /* Reverse pointer. */
+    int i;
+    for (i = 0; i < argc/2; i++)
+    {
+      char* tmp = argv[i];
+      argv[i] = argv[argc -1 -i];
+      argv[argc -1 -i] = tmp;
+    }
+
+  if (push(kpage, &available,&argc, sizeof argv) == NULL)
+        return false;
+
+  if (push(kpage, &available,&word_align_return, sizeof word_align_return) == NULL)
+      return false;
+  *esp = upage + available;
+  return true;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
