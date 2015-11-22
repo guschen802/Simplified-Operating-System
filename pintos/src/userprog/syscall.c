@@ -15,7 +15,7 @@ static int get_user (const uint8_t *uaddr);
 static bool put_user (uint8_t *udst, uint8_t byte);
 static void copy_data(uint8_t *uaddr, uint8_t *dst, int size);
 static void sys_halt(void);
-static void sys_exit(void);
+static void sys_exit(int status);
 static int sys_write(int fd, void *buffer, unsigned size);
 
 
@@ -37,7 +37,8 @@ syscall_handler (struct intr_frame *f UNUSED)
       sys_halt();
       break;
     case SYS_EXIT:
-      sys_exit();
+      get_arg(arg,1, f->esp);
+      sys_exit(arg[0]);
       break;
     case SYS_EXEC:
     case SYS_WAIT:
@@ -47,7 +48,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     case SYS_FILESIZE:
     case SYS_READ:
       printf("SYSCALL:%d NOT IMPLEMENTED YET!\n", syscall_nr);
-      sys_exit();
+      sys_exit(-1);
       break;
     case SYS_WRITE:
       get_arg(arg,3, f->esp);
@@ -57,11 +58,11 @@ syscall_handler (struct intr_frame *f UNUSED)
     case SYS_TELL:
     case SYS_CLOSE:
       printf("SYSCALL: %d NOT IMPLEMENTED YET!\n", syscall_nr);
-      sys_exit();
+      sys_exit(-1);
       break;
     default:
       printf ("PANIC! UNKNOWN SYSCALL NUMBER: %d\n", syscall_nr);
-      sys_exit();
+      sys_exit(-1);
   }
 
 }
@@ -120,8 +121,11 @@ sys_halt(void)
 }
 
 static void
-sys_exit(void)
+sys_exit(int status)
 {
+  struct thread *cur = thread_current();
+  cur->process_status->exit_code = status;
+  sema_up(&cur->process_status->exit);
   thread_exit();
 }
 

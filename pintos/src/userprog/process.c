@@ -17,29 +17,21 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
+#include "threads/malloc.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static bool parse_command(uint8_t* kpage, uint8_t* upage, const char* command_, void** esp);
 static void* push (uint8_t* kpage, size_t* available,const void* data, size_t size);
 
-static void*
-push (uint8_t* kpage, size_t* available,const void* data, size_t size)
-{
-  /* Data is pushed in size of 4 bytes. */
-  size_t filled_size = ROUND_UP(size, sizeof(uint32_t));
-
-  /* Check page available.*/
-  if (filled_size > *available)
-    return NULL;
-
-  /* Push data on page downward. */
-  memcpy(kpage + *available - size, data, size);
-  *available -= filled_size;
-
-  /* Return start pointer of pushed data. */
-  return kpage + *available + filled_size - size;
-}
+struct executable
+  {
+    char *command_line;
+    struct semaphore load_done;
+    struct process_status *status;
+    bool success;
+  };
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -57,6 +49,11 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
 
+  struct executable exec;
+  sema_init(&exec.load_done, 0);
+  exec.success = false;
+  exec.command_line = fn_copy;
+
   strlcpy (fn_copy, file_name, PGSIZE);
   strlcpy (thread_name, file_name, sizeof thread_name);
   char* end = strrchr(thread_name, ' ');
@@ -64,18 +61,26 @@ process_execute (const char *file_name)
     *end = '\0';
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (thread_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (thread_name, PRI_DEFAULT, start_process, &exec);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+
+  sema_down(&exec.load_done);
+  if (!exec.success)
+    return TID_ERROR;
+  list_push_back(&thread_current()->children, &exec.status->elem);
+
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *exec_)
 {
-  char *file_name = file_name_;
+  struct executable *exec = (struct executable*)exec_;
+
+  char *command_line = exec->command_line;
   struct intr_frame if_;
   bool success;
 
@@ -84,13 +89,18 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  success = load (command_line, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
+  palloc_free_page (command_line);
   if (!success) 
     thread_exit ();
 
+  exec->success = true;
+  exec->status = thread_current()->process_status = malloc(sizeof(struct process_status));
+  exec->status->tid = thread_current()->tid;
+  sema_init(&exec->status->exit, 0);
+  sema_up(&exec->load_done);
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -113,10 +123,25 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  //TODO: temparay solution
-  while(true){
+  struct thread *cur = thread_current ();
+  struct list_elem *e;
 
-  }
+  for (e = list_begin(&cur->children); e != list_end(&cur->children); e = list_next(e))
+    {
+      struct process_status* status = list_entry(e, struct process_status, elem);
+
+      if (child_tid == status->tid)
+	{
+	  sema_down(&status->exit);
+	  return status->exit_code;
+	}
+    }
+
+  //TODO: temparay solution
+  printf("===>Wait error!!\n");
+    while(true){
+
+    }
   return -1;
 }
 
@@ -542,4 +567,22 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+static void*
+push (uint8_t* kpage, size_t* available,const void* data, size_t size)
+{
+  /* Data is pushed in size of 4 bytes. */
+  size_t filled_size = ROUND_UP(size, sizeof(uint32_t));
+
+  /* Check page available.*/
+  if (filled_size > *available)
+    return NULL;
+
+  /* Push data on page downward. */
+  memcpy(kpage + *available - size, data, size);
+  *available -= filled_size;
+
+  /* Return start pointer of pushed data. */
+  return kpage + *available + filled_size - size;
 }
