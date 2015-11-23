@@ -125,6 +125,7 @@ sys_exit(int status)
 {
   struct thread *cur = thread_current();
   cur->process_status->exit_code = status;
+  printf ("%s: exit(%d)\n",cur->name, status);
   sema_up(&cur->process_status->exit);
   thread_exit();
 }
