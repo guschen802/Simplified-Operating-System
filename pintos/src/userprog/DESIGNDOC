@@ -30,11 +30,36 @@ Jun    Wang <jwang79@buffalo.edu>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+New structure in process.c for passing argument.
+struct executable
+  {
+    char *command_line;		/* Pointer to command line in kernel page. */
+    uint8_t kpage;		/* Pointer to start of the kernel page. */
+    size_t offset;		/* Offset of filled memory in page. */
+    struct semaphore load_done;	/* Load done semaphore, 0-loading, 1-load_done. */
+    bool success;		/* Load success flag. */
+  };
+
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe how you implemented argument parsing.  How do
 >> you arrange for the elements of argv[] to be in the right order?
 >> How do you avoid overflowing the stack page?
+
+1) Aquire a kernel page from pool.
+2) Make a copy of command by pushing command line on the aquired page. 
+3) Passing the struct executable containing the copied command and pointer 
+   to kernel page all the way to setup_stack ().
+4) Use strtok_r() to parse the command line in setup_stack (), 
+   push the pointer(translated to user vaddress) to parsed argument 
+   onto kernel page.
+5) Reverse the pushed pointer to arguments.
+6) Push the pointer to argument pointer, arguments count and return address.
+
+The entirely command line is pushed onto stack directely, from the stack view, 
+it is in reverse order, since we use the pointer to get the actual data, we 
+only need to make sure the pointer is in right-order from stack view and 
+which is done in STEP.5.
 
 ---- RATIONALE ----
 
