@@ -30,15 +30,15 @@ Jun    Wang <jwang79@buffalo.edu>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
-New structure in process.c for passing argument.
-struct executable
-  {
-    char *command_line;		/* Pointer to command line in kernel page. */
-    uint8_t kpage;		/* Pointer to start of the kernel page. */
-    size_t offset;		/* Offset of filled memory in page. */
-    struct semaphore load_done;	/* Load done semaphore, 0-loading, 1-load_done. */
-    bool success;		/* Load success flag. */
-  };
+   New structure in process.c for passing argument:
+   struct executable
+     {
+       char *command_line;		/* Pointer to command line in kernel page. */
+       uint8_t kpage;		/* Pointer to start of the kernel page. */
+       size_t offset;		/* Offset of filled memory in page. */
+       struct semaphore load_done;	/* Load done semaphore, 0-loading, 1-load_done. */
+       bool success;		/* Load success flag. */
+     };
 
 ---- ALGORITHMS ----
 
@@ -46,28 +46,28 @@ struct executable
 >> you arrange for the elements of argv[] to be in the right order?
 >> How do you avoid overflowing the stack page?
 
-1) Aquire a kernel page from pool.
-2) Make a copy of command by pushing command line on the aquired page. 
-3) Passing the struct executable containing the copied command and pointer 
-   to kernel page all the way to setup_stack ().
-4) Use strtok_r() to parse the command line in setup_stack (), 
-   push the pointer(translated to user vaddress) to parsed argument 
-   onto kernel page.
-5) Reverse the pushed pointer to arguments.
-6) Push the pointer to argument pointer, arguments count and return address.
+   1) Aquire a kernel page from pool.
+   2) Make a copy of command by pushing command line on the aquired page. 
+   3) Passing the struct executable containing the copied command and pointer 
+      to kernel page all the way to setup_stack ().
+   4) Use strtok_r() to parse the command line in setup_stack (), 
+      push the pointer(translated to user vaddress) to parsed argument 
+      onto kernel page.
+   5) Reverse the pushed pointer to arguments.
+   6) Push the pointer to argument pointer, arguments count and return address.
 
-The entirely command line is pushed onto stack directely, from the stack view, 
-it is in reverse order, since we use the pointer to get the actual data, we 
-only need to make sure the pointer is in right-order from stack view and 
-which is done in STEP.5.
+   The entirely command line is pushed onto stack directely, from the stack view, 
+   it is in reverse order, since we use the pointer to get the actual data, we 
+   only need to make sure the pointer is in right-order from stack view and 
+   which is done in STEP.5.
 
 ---- RATIONALE ----
 
 >> A3: Why does Pintos implement strtok_r() but not strtok()?
 
-Since Pintos support multiple process(kernel thread), using strtok() is 
-thread unsafe, since strtok() use a static buffer while strtok_r() need
-to pass a pointer to buffer provided by user.
+   Since Pintos support multiple process(kernel thread), using strtok() is 
+   thread unsafe, since strtok() use a static buffer while strtok_r() need
+   to pass a pointer to buffer provided by user.
 
 >> A4: In Pintos, the kernel separates commands into a executable name
 >> and arguments.  In Unix-like systems, the shell does this
@@ -82,9 +82,49 @@ to pass a pointer to buffer provided by user.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+   Added member to struct thread in thread.h:
+   struct thread
+     {
+       /* Owned by process.c*/
+       struct list children;			            /* List of its child process. */
+       struct process_status* process_status;	/* Pointer to current process running status. */
+
+       /* Owned by syscall.c. */
+       int next_fd;				/* Next file descripte]or for opened file. */ 
+       struct list opend_files;			          /* List of files opened by this process. */
+     };
+     
+   struct process_status
+     {
+       int tid;			          /* Process tid. */
+       struct list_elem elem;	/* List element. */
+       struct semaphore exit;	/* Semaphore for exit status, 0-running, 1-exit*/
+       int exit_code;		      /* Exit status flag. */
+     };
+
+   New structure added in syscall.c:
+   struct opened_file
+     {
+       struct list_elem elem;	/* List element. */
+       int fd;			/* File descriptor. */
+       struct File file;		/* Associated file. */
+     };
+
+   Add new member to struct executable (describe in section A) in process.c:
+   struct executable
+     {
+       struct semaphore load_done;	/* Load done semaphore, 0-loading, 1-load_done. */
+       bool success;		/* Load success flag. */
+     };
+
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
+
+   We use a new structure created in syscall.c to associate the file descriptor
+   with the opeded file. The file descriptors are unique within a single process,
+   and the next file descriptor for new opened file is maintains by next_fd in
+   struct thread.
 
 ---- ALGORITHMS ----
 
@@ -100,7 +140,22 @@ to pass a pointer to buffer provided by user.
 
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
-
+   
+   Since we decide to use the tid_t as pid_t directly, when user call 
+   sys_wait(pid), the kernel call process_wait(tid).
+   In process_wait(), search the tid in process's children list, and
+   use sema_down(exit) to wait for the child exit. After exit, the parent
+   can get the exit_code.
+   
+   Sample steps of wait():
+   1) Child process start, initilize semaphore exit to 0 indicating running, 
+      and added to the parents children list.
+   2) Parent process call wait(child_pid).
+   3) wait() search the pid in its children list, when found, call sema_down(exit)
+      to wait for the child process.
+   4) Child process terminate, call sema_up(exit) to indicate tremination.
+   5) Parent process waked up and check the exit_code flag.
+   
 >> B6: Any access to user program memory at a user-specified address
 >> can fail due to a bad pointer value.  Such accesses must cause the
 >> process to be terminated.  System calls are fraught with such
@@ -122,12 +177,36 @@ to pass a pointer to buffer provided by user.
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
 
+   Since the new process is loaded asynchronously in a newly created kernel
+   thread, the caller need to wait until the loading finished to get the
+   success/failure status. So we use a semepore load_done initialize to 0
+   indicating loading, and the caller need to wait until load_done is up to 1.
+   After caller is unblock by the semaphore, it check the success flag in
+   struct executable to get the load success/failure status.
+
+   Execut program steps:
+   1) Caller execute new program.
+   2) Initialize semaphore load_done to 0.
+   3) Load program asynchronously in new kernel thread.
+   4) Caller call sema_down(load_done) to wait for loading complete.
+   5) Loading complete, set flag success to true/false indicating the 
+      load status.
+   6) Loading thread call sema_up(load_done) to notify the caller.
+   7) Caller wake up, then get load status from flag success.
+
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
 >> calls wait(C) before C exits?  After C exits?  How do you ensure
 >> that all resources are freed in each case?  How about when P
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
+
+   We use a new allocated strucure process_status to monitor the child
+   process exit status, and it is seperate from the thread's resourse, 
+   even the child process is terminate and release the resource, the 
+   process_status will not release until its parent process terminate.
+   So the parent process can always get the exit status of its children 
+   whatever they are alive or not.
 
 ---- RATIONALE ----
 
@@ -137,8 +216,17 @@ to pass a pointer to buffer provided by user.
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
 
+We use a list to keep track of the opened file of the process.
+Advantages:    No need to worried about the number of opened file, the
+               list can expand arbitrarily.
+Disadvantages: When using file discriptor to access file, it will take
+               linear time to search for the associated file. 
+
+
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+
+We will not change this for the design now.
 
 			   SURVEY QUESTIONS
 			   ================
