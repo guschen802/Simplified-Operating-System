@@ -1,8 +1,8 @@
-		     +--------------------------+
-       	  |		   CSE 521		     |
-		     | PROJECT 2: USER PROGRAMS |
-		     | 	   DESIGN DOCUMENT     |
-		     +--------------------------+
+       +--------------------------+
+       |        CSE 521           |
+       | PROJECT 2: USER PROGRAMS |
+       |     DESIGN DOCUMENT      |
+       +--------------------------+
 
 ---- GROUP ----
 
@@ -21,8 +21,8 @@ Jun    Wang <jwang79@buffalo.edu>
 >> preparing your submission, other than the Pintos documentation, course
 >> text, lecture notes, and course staff.
 
-			   ARGUMENT PASSING
-			   ================
+            ARGUMENT PASSING
+            ================
 
 ---- DATA STRUCTURES ----
 
@@ -33,11 +33,14 @@ Jun    Wang <jwang79@buffalo.edu>
    New structure in process.c for passing argument:
    struct executable
      {
-       char *command_line;		/* Pointer to command line in kernel page. */
-       uint8_t kpage;		/* Pointer to start of the kernel page. */
-       size_t offset;		/* Offset of filled memory in page. */
-       struct semaphore load_done;	/* Load done semaphore, 0-loading, 1-load_done. */
-       bool success;		/* Load success flag. */
+       char *command_line;            /* Pointer to command line in kernel page. */
+       int argc;                      /* Argument count of command_line. */
+       char** argv;                   /* fisrt argument pointer. */
+       uint8_t *kpage;                /* Pointer to start of the kernel page. */
+       size_t available;              /* Available size of memory in kernel page. */
+       struct process_status *status; /* Process waiting status. */
+       struct semaphore load_done;    /* Load done semaphore, 0-loading, 1-load_done. */
+       bool success;                  /* Load success flag. */
      };
 
 ---- ALGORITHMS ----
@@ -86,8 +89,8 @@ Jun    Wang <jwang79@buffalo.edu>
    every time we need to access the executable file. Also the kernel need to look
    for a file with full path, it would be an expensive operation for the kernel.
 
-			     SYSTEM CALLS
-			     ============
+            SYSTEM CALLS
+            ============
 
 ---- DATA STRUCTURES ----
 
@@ -99,35 +102,35 @@ Jun    Wang <jwang79@buffalo.edu>
    struct thread
      {
        /* Owned by process.c*/
-       struct list children;			            /* List of its child process. */
-       struct process_status* process_status;	/* Pointer to current process running status. */
+       struct list children;                  /* List of its child process. */
+       struct process_status* process_status; /* Pointer to current process running status. */
 
        /* Owned by syscall.c. */
-       int next_fd;				                  /* Next file descripte]or for opened file. */ 
-       struct list opend_files;			         /* List of files opened by this process. */
+       int next_fd;                           /* Next file descripte]or for opened file. */ 
+       struct list opend_files;               /* List of files opened by this process. */
      };
      
    struct process_status
      {
-       int tid;			          /* Process tid. */
-       struct list_elem elem;	/* List element. */
-       struct semaphore exit;	/* Semaphore for exit status, 0-running, 1-exit*/
-       int exit_code;		      /* Exit status flag. */
+       int tid;               /* Process tid. */
+       struct list_elem elem; /* List element. */
+       struct semaphore exit; /* Semaphore for exit status, 0-running, 1-exit*/
+       int exit_code;         /* Exit status flag. */
      };
 
    New structure added in syscall.c:
    struct opened_file
      {
-       struct list_elem elem;	/* List element. */
-       int fd;			/* File descriptor. */
-       struct File file;		/* Associated file. */
+       struct list_elem elem; /* List element. */
+       int fd;                /* File descriptor. */
+       struct File file;      /* Associated file. */
      };
 
    Add new member to struct executable (describe in section A) in process.c:
    struct executable
      {
-       struct semaphore load_done;	/* Load done semaphore, 0-loading, 1-load_done. */
-       bool success;		/* Load success flag. */
+       struct semaphore load_done;  /* Load done semaphore, 0-loading, 1-load_done. */
+       bool success;                /* Load success flag. */
      };
 
 >> B2: Describe how file descriptors are associated with open files.
@@ -285,8 +288,8 @@ Jun    Wang <jwang79@buffalo.edu>
 
 We will not change this for the design now.
 
-			   SURVEY QUESTIONS
-			   ================
+            SURVEY QUESTIONS
+            ================
 
 Answering these questions is optional, but it will help us improve the
 course in future quarters.  Feel free to tell us anything you
