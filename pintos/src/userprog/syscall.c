@@ -8,6 +8,8 @@
 #include "devices/shutdown.h"
 #include "lib/stdio.h"
 #include "lib/kernel/stdio.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 
 static void syscall_handler (struct intr_frame *);
 static void get_arg(int* arg, int count, void* esp);
@@ -18,6 +20,13 @@ static void sys_halt(void);
 static void sys_exit(int status);
 static int sys_write(int fd, void *buffer, unsigned size);
 
+
+struct opened_file
+  {
+    struct list_elem elem;	/* List element. */
+    int fd;			/* File descripter. */
+    struct File *file;		/* Associated file. */
+  };
 
 void
 syscall_init (void) 

@@ -27,10 +27,10 @@ typedef int tid_t;
 
 struct process_status
 {
-  int tid;
-  struct list_elem elem;
-  struct semaphore exit;
-  int exit_code;
+  int tid;			/* Process tid. */
+  struct list_elem elem;	/* List element. */
+  struct semaphore exit;	/* Semaphore for exit status, 0-running, 1-exit*/
+  int exit_code;		/* Exit status flag. */
 };
 
 /* A kernel thread or user process.
@@ -103,8 +103,11 @@ struct thread
     struct list_elem elem;              /* List element. */
 
     /* Owned by process.c*/
-    struct list children;
-    struct process_status* process_status;
+    struct list children;			/* List of its child process. */
+    struct process_status* process_status;	/* Current process running status. */
+
+    /* Owned by syscall.c. */
+    struct list opend_files;			/* List of files opened by this process. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
