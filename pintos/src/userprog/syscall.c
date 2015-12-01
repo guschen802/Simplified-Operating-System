@@ -17,7 +17,8 @@ static void get_arg(int* arg, int count, void* esp);
 static int get_user (const uint8_t *uaddr);
 static bool put_user (uint8_t *udst, uint8_t byte);
 static void copy_data(uint8_t *uaddr, uint8_t *dst, int size);
-static bool has_opened_file (int fd);
+static struct opened_file* get_opened_file (int fd);
+static void close_all_file ();
 static void sys_halt(void);
 static void sys_exit(int status);
 static pid_t sys_exec (const char *cmd_line);
@@ -38,7 +39,7 @@ struct opened_file
   {
     struct list_elem elem;	/* List element. */
     int fd;			/* File descripter. */
-    struct File *file;		/* Associated file. */
+    struct file *file;		/* Associated file. */
   };
 
 void
@@ -143,7 +144,7 @@ get_user (const uint8_t *uaddr)
 UDST must be below PHYS_BASE.
 Returns true if successful, false if a segfault occurred. */
 static bool
-put_user (uint8_t *udst, uint8_t byte) UNUSED
+put_user (uint8_t *udst, uint8_t byte)
 {
   int error_code;
   asm ("movl $1f, %0; movb %b2, %1; 1:"
@@ -184,6 +185,7 @@ sys_exit(int status)
   cur->process_status->exit_code = status;
   printf ("%s: exit(%d)\n",cur->name, status);
   sema_up(&cur->process_status->exit);
+  close_all_file ();
   thread_exit();
 }
 
@@ -281,8 +283,8 @@ sys_remove (const char * file)
 
 /* Check whether the given file descriptor has associated with an
  * open file. */
-static bool
-has_opened_file (int fd)
+static struct opened_file*
+get_opened_file (int fd)
 {
   struct list_elem *e;
   struct thread *cur = thread_current();
@@ -290,9 +292,9 @@ has_opened_file (int fd)
     {
       struct opened_file * o_file = list_entry(e, struct opened_file, elem);
       if (fd == o_file->fd)
-	return true;
+	return o_file;
     }
-  return false;
+  return NULL;
 }
 
 /* Opens the file called file. Returns a nonnegative integer handle called
@@ -428,9 +430,33 @@ sys_tell (int fd)
 static void
 sys_close (int fd)
 {
-  //TODO: sys_close not finished
-  printf("===> SYS_CLOSE NOT FINISHED!\n");
-  sys_exit(-1);
+  struct opened_file *o_file = get_opened_file(fd);
+  if (o_file != NULL)
+    {
+      lock_acquire(&fys_lock);
+      file_close(o_file->file);
+
+      list_remove(&o_file->elem);
+      free(o_file);
+      lock_release(&fys_lock);
+    }
+}
+
+/* Close all the file opened by current thread. */
+static void
+close_all_file ()
+{
+  struct list_elem *e;
+  struct thread *cur = thread_current();
+  lock_acquire(&fys_lock);
+  for (e = list_begin(&cur->opened_files); e!= list_end(&cur->opened_files); e = list_next(e))
+    {
+      struct opened_file * o_file = list_entry(e, struct opened_file, elem);
+      file_close(o_file->file);
+      list_remove(&o_file->elem);
+      free(o_file);
+    }
+  lock_release(&fys_lock);
 }
 
 
