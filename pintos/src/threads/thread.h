@@ -107,8 +107,8 @@ struct thread
     struct process_status* process_status;	/* Current process running status. */
 
     /* Owned by syscall.c. */
-    struct list opend_files;			/* List of files opened by this process. */
-
+    int next_fd;                                /* Next file descripte]or for opened file. */
+    struct list opened_files;			/* List of files opened by this process. */
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */

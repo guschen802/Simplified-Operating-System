@@ -167,7 +167,13 @@ process_wait (tid_t child_tid UNUSED)
       if (child_tid == status->tid)
 	{
 	  sema_down(&status->exit);
-	  return status->exit_code;
+	  int code = status->exit_code;
+	  /* A child can only be waited for once, after that,
+	   * remove from children list. */
+	  list_remove(e);
+	  free(status);
+
+	  return code;
 	}
     }
   return -1;
