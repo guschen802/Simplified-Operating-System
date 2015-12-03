@@ -104,7 +104,8 @@ struct thread
 
     /* Owned by process.c*/
     struct list children;			/* List of its child process. */
-    struct process_status* process_status;	/* Current process running status. */
+    struct process_status *process_status;	/* Current process running status. */
+    struct file *executable;			/* The excutable file of current process. */
 
     /* Owned by syscall.c. */
     int next_fd;                                /* Next file descripte]or for opened file. */

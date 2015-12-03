@@ -16,7 +16,7 @@ static void syscall_handler (struct intr_frame *);
 static void get_arg(int* arg, int count, void* esp);
 static int get_user (const uint8_t *uaddr);
 static bool put_user (uint8_t *udst, uint8_t byte);
-static void copy_data(uint8_t *uaddr, uint8_t *dst, int size);
+static bool copy_data(uint8_t *uaddr, uint8_t *dst, int size);
 static struct opened_file* get_opened_file (int fd);
 static void close_all_file ();
 static void sys_halt(void);
@@ -122,7 +122,8 @@ get_arg(int* arg, int count, void* esp)
   for (i = 0; i < count; i++)
     {
       uint8_t* ptr = (uint8_t*)((int*)esp +1 +i);
-      copy_data(ptr, (uint8_t *)&arg[i], sizeof arg[0]);
+      if(!copy_data(ptr, (uint8_t *)&arg[i], sizeof arg[0]))
+	sys_exit(-1);
     }
 }
 
@@ -136,7 +137,6 @@ get_user (const uint8_t *uaddr)
   int result;
   asm ("movl $1f, %0; movzbl %1, %0; 1:"
   : "=&a" (result) : "m" (*uaddr));
-  ASSERT(result!=-1);
   return result;
 }
 
@@ -152,15 +152,22 @@ put_user (uint8_t *udst, uint8_t byte)
   return error_code != -1;
 }
 
-static void
+static bool
 copy_data(uint8_t *uaddr, uint8_t *dst, int size)
 {
   int i;
   for (i = 0; i < size; i++, dst++, uaddr++)
     {
-      ASSERT(is_user_vaddr((const void *)uaddr));
-      *dst = (uint8_t)get_user((uint8_t*)uaddr);
+      if (!is_user_vaddr((const void *)uaddr))
+	return false;
+      int ret = get_user((uint8_t*)uaddr);
+
+      if (ret == -1)
+	return false;
+
+      *dst = (uint8_t)ret;
     }
+  return true;
 }
 
 /* Terminates Pintos by calling shutdown_power_off()
@@ -261,11 +268,10 @@ sys_wait (pid_t pid)
 static bool
 sys_create (const char * file, unsigned initial_size)
 {
-  //TODO: sys_create not finished
-  printf("===> SYS_CREATE NOT FINISHED!\n");
-  sys_exit(-1);
-
-  return false;
+  lock_acquire(&fys_lock);
+  bool ret = filesys_create(file, initial_size);
+  lock_release(&fys_lock);
+  return ret;
 }
 
 /* Deletes the file called file. Returns true if successful, false otherwise.
@@ -275,10 +281,10 @@ sys_create (const char * file, unsigned initial_size)
 static bool
 sys_remove (const char * file)
 {
-  //TODO: sys_remove not finished
-  printf("===> SYS_REMOVE NOT FINISHED!\n");
-  sys_exit(-1);
-  return false;
+  lock_acquire(&fys_lock);
+  bool ret = filesys_remove(file);
+  lock_release(&fys_lock);
+  return ret;
 }
 
 /* Check whether the given file descriptor has associated with an
@@ -343,9 +349,14 @@ sys_open (const char * file)
 static int
 sys_filesize (int fd)
 {
-  //TODO: sys_filesize not finished
-  printf("===> SYS_FILESIZE NOT FINISHED!\n");
-  sys_exit(-1);
+  struct opened_file* o_file = get_opened_file(fd);
+  if (o_file != NULL)
+    {
+      lock_acquire(&fys_lock);
+      off_t ret = file_length(o_file->file);
+      lock_release(&fys_lock);
+      return ret;
+    }
   return 0;
 }
 
@@ -356,9 +367,28 @@ sys_filesize (int fd)
 static int
 sys_read (int fd, void * buffer, unsigned size)
 {
-  //TODO: sys_read not finished
-  printf("===> SYS_READ NOT FINISHED!\n");
-  sys_exit(-1);
+  if (fd == STDIN_FILENO)
+    {
+      int count = size;
+      uint8_t* buffer_ = (uint8_t*) buffer;
+      while (count-->0)
+	{
+	  *buffer_ = input_getc();
+	  buffer_++;
+	}
+      return size;
+    }
+  else
+    {
+      struct opened_file* o_file = get_opened_file(fd);
+      if (o_file != NULL)
+      {
+	lock_acquire(&fys_lock);
+	off_t ret = file_read(o_file->file, buffer, size);
+	lock_release(&fys_lock);
+	return ret;
+      }
+    }
   return 0;
 }
 
@@ -388,7 +418,14 @@ sys_write(int fd, const void *buffer, unsigned size)
     }
   else
     {
-      printf("SYS_WRITE: write to file not implemented!\n");
+      struct opened_file* o_file = get_opened_file(fd);
+      if (o_file != NULL)
+	{
+	  lock_acquire(&fys_lock);
+	  off_t ret = file_write(o_file->file, buffer, size);
+	  lock_release(&fys_lock);
+	  return ret;
+	}
     }
   return 0;
 }
@@ -407,9 +444,13 @@ sys_write(int fd, const void *buffer, unsigned size)
 static void
 sys_seek (int fd, unsigned position)
 {
-  //TODO: sys_seek not finished
-  printf("===> SYS_SEEK NOT FINISHED!\n");
-  sys_exit(-1);
+  struct opened_file* o_file = get_opened_file(fd);
+  if (o_file != NULL)
+    {
+      lock_acquire(&fys_lock);
+      file_seek(o_file->file, position);
+      lock_release(&fys_lock);
+    }
 }
 
 /* Returns the position of the next byte to be read or written
@@ -418,9 +459,14 @@ sys_seek (int fd, unsigned position)
 static unsigned
 sys_tell (int fd)
 {
-  //TODO: sys_tell not finished
-  printf("===> SYS_TELL NOT FINISHED!\n");
-  sys_exit(-1);
+  struct opened_file* o_file = get_opened_file(fd);
+  if (o_file != NULL)
+    {
+      lock_acquire(&fys_lock);
+      off_t ret = file_tell(o_file->file);
+      lock_release(&fys_lock);
+      return ret;
+    }
   return 0;
 }
 
@@ -435,7 +481,6 @@ sys_close (int fd)
     {
       lock_acquire(&fys_lock);
       file_close(o_file->file);
-
       list_remove(&o_file->elem);
       free(o_file);
       lock_release(&fys_lock);
