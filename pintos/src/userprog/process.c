@@ -62,6 +62,7 @@ process_execute (const char *file_name)
   struct executable exec;
   sema_init(&exec.load_done, 0);
   exec.kpage = kpage;
+  exec.success = false;
 
   /* Check whether the command line fit in one page.
    *  And exec.available shoud no less than 12 to fit
@@ -113,7 +114,7 @@ start_process (void *exec_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (exec, &if_.eip, &if_.esp);
-
+  
   /* If load failed, quit. */
   if (!success) 
     {
@@ -525,10 +526,10 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (struct executable* exec, void **esp)
 {
-  uint8_t* kpage, upage;
+  uint8_t *kpage, *upage;
   kpage = exec->kpage;
-  upage = (uint8_t *) PHYS_BASE - PGSIZE;
-
+  upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  
   if (!install_page (upage,kpage, true))
     return false;
 
@@ -547,7 +548,7 @@ setup_stack (struct executable* exec, void **esp)
       || push(kpage, &exec->available,&word_align_return, sizeof word_align_return) == NULL)
     return false;
 
-  *esp = upage + (uint8_t* )exec->available;
+  *esp = upage + exec->available;
   return true;
 }
 
