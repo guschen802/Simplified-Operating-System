@@ -52,7 +52,11 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-  int syscall_nr = *(int*)f->esp;
+  int syscall_nr = -1;
+  if (!is_user_vaddr(f->esp) || !copy_data(f->esp, &syscall_nr, sizeof(int)))
+    {
+      sys_exit(-1);
+    }
   int arg[3];
 
   switch (syscall_nr)
@@ -268,6 +272,10 @@ sys_wait (pid_t pid)
 static bool
 sys_create (const char * file, unsigned initial_size)
 {
+  if (file == NULL || *file == '\n')
+    {
+     sys_exit(-1);
+    }
   lock_acquire(&fys_lock);
   bool ret = filesys_create(file, initial_size);
   lock_release(&fys_lock);
@@ -322,6 +330,8 @@ get_opened_file (int fd)
 static int
 sys_open (const char * file)
 {
+  if (file == NULL)
+    sys_exit(-1);
   struct opened_file *o_file = malloc(sizeof (struct opened_file));
 
   if (o_file != NULL)
@@ -411,6 +421,18 @@ sys_read (int fd, void * buffer, unsigned size)
 static int
 sys_write(int fd, const void *buffer, unsigned size)
 {
+  int c;
+  char* buffer_ = (char*) buffer;
+
+  do
+    {
+      c = get_user(buffer_);
+      if (c == -1)
+	sys_exit(-1);
+      buffer_++;
+    }
+  while (c != '\0');
+
   if (fd == STDOUT_FILENO)
     {
       putbuf(buffer, size);
