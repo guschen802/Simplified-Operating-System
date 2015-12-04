@@ -130,6 +130,7 @@ start_process (void *exec_)
    * it is exited and release resource before parrent call wait for it.*/
   exec->status = thread_current()->process_status = malloc(sizeof(struct process_status));
   exec->status->tid = thread_current()->tid;
+  exec->status->exit_code = -1;
   sema_init(&exec->status->exit, 0);
   sema_up(&exec->load_done);
 
@@ -186,8 +187,16 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-  /* Close the executable and allow write. */
+  /* Close the file it opened including executable. */
   file_close(cur->executable);
+  close_all_file ();
+
+  if (cur->process_status != NULL)
+    {
+      printf ("%s: exit(%d)\n",cur->name, cur->process_status->exit_code);
+      sema_up(&cur->process_status->exit);
+    }
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;

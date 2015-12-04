@@ -17,8 +17,9 @@ static void get_arg(int* arg, int count, void* esp);
 static int get_user (const uint8_t *uaddr);
 static bool put_user (uint8_t *udst, uint8_t byte);
 static bool copy_data(uint8_t *uaddr, uint8_t *dst, int size);
+static void check_string(const char* buffer);
+static void check_buffer(const void* buffer, size_t size);
 static struct opened_file* get_opened_file (int fd);
-static void close_all_file ();
 static void sys_halt(void);
 static void sys_exit(int status);
 static pid_t sys_exec (const char *cmd_line);
@@ -194,9 +195,6 @@ sys_exit(int status)
 {
   struct thread *cur = thread_current();
   cur->process_status->exit_code = status;
-  printf ("%s: exit(%d)\n",cur->name, status);
-  sema_up(&cur->process_status->exit);
-  close_all_file ();
   thread_exit();
 }
 
@@ -211,6 +209,7 @@ sys_exit(int status)
 static pid_t
 sys_exec (const char *cmd_line)
 {
+  check_string(cmd_line);
   /* Loading program also involve reading executable from
    * file system , so we need lock here. */
   lock_acquire(&fys_lock);
@@ -272,6 +271,7 @@ sys_wait (pid_t pid)
 static bool
 sys_create (const char * file, unsigned initial_size)
 {
+  check_string(file);
   if (file == NULL || *file == '\n')
     {
      sys_exit(-1);
@@ -289,6 +289,7 @@ sys_create (const char * file, unsigned initial_size)
 static bool
 sys_remove (const char * file)
 {
+  check_string(file);
   lock_acquire(&fys_lock);
   bool ret = filesys_remove(file);
   lock_release(&fys_lock);
@@ -330,6 +331,7 @@ get_opened_file (int fd)
 static int
 sys_open (const char * file)
 {
+  check_string(file);
   if (file == NULL)
     sys_exit(-1);
   struct opened_file *o_file = malloc(sizeof (struct opened_file));
@@ -377,6 +379,9 @@ sys_filesize (int fd)
 static int
 sys_read (int fd, void * buffer, unsigned size)
 {
+  check_buffer(buffer, size);
+  if (buffer == NULL)
+    sys_exit(-1);
   if (fd == STDIN_FILENO)
     {
       int count = size;
@@ -421,17 +426,7 @@ sys_read (int fd, void * buffer, unsigned size)
 static int
 sys_write(int fd, const void *buffer, unsigned size)
 {
-  int c;
-  char* buffer_ = (char*) buffer;
-
-  do
-    {
-      c = get_user(buffer_);
-      if (c == -1)
-	sys_exit(-1);
-      buffer_++;
-    }
-  while (c != '\0');
+  check_string(buffer);
 
   if (fd == STDOUT_FILENO)
     {
@@ -510,21 +505,61 @@ sys_close (int fd)
 }
 
 /* Close all the file opened by current thread. */
-static void
+void
 close_all_file ()
 {
-  struct list_elem *e;
   struct thread *cur = thread_current();
-  lock_acquire(&fys_lock);
-  for (e = list_begin(&cur->opened_files); e!= list_end(&cur->opened_files); e = list_next(e))
+  struct list_elem *e;
+  while (!list_empty(&cur->opened_files))
     {
+      e = list_pop_front(&cur->opened_files);
+
       struct opened_file * o_file = list_entry(e, struct opened_file, elem);
+      lock_acquire(&fys_lock);
       file_close(o_file->file);
-      list_remove(&o_file->elem);
+      lock_release(&fys_lock);
       free(o_file);
+
     }
-  lock_release(&fys_lock);
 }
 
+static
+void check_string(const char* buffer)
+{
+  if (buffer == NULL)
+    return;
+  int c;
+  char* buffer_ = buffer;
 
+  do
+    {
+      if (!is_user_vaddr(buffer))
+      	sys_exit(-1);
+      c = get_user(buffer_);
+      if (c == -1)
+      sys_exit(-1);
+      buffer_++;
+    }
+  while (c != '\0');
+}
 
+static
+void check_buffer(const void* buffer, size_t size)
+{
+  if (buffer == NULL)
+    return;
+  int c;
+  void* buffer_ = buffer;
+  while (size > 0)
+    {
+      if (!is_user_vaddr(buffer_))
+	sys_exit(-1);
+
+      c = get_user(buffer_);
+      if (c == -1)
+	sys_exit(-1);
+
+      buffer_++;
+      size--;
+    }
+}
