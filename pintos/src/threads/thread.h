@@ -31,6 +31,13 @@ struct process_status
   struct list_elem elem;	/* List element. */
   struct semaphore exit;	/* Semaphore for exit status, 0-running, 1-exit*/
   int exit_code;		/* Exit status flag. */
+  /* Since process_status will be access by both parent
+   * and children, and we are not sure which will
+   * terminate and be released first, we use a counter
+   * to count the lifetime of process_status
+   * after life decrease to 0, then we can release
+   * process_status. */
+  int life;			/* Lifetime of process status. */
 };
 
 /* A kernel thread or user process.

@@ -36,7 +36,7 @@ static thread_func start_process NO_RETURN;
 static bool load (struct executable *exec, void (**eip) (void), void **esp);
 static bool parse_command(uint8_t* kpage, struct executable* exec, const char* command_);
 static void* push (uint8_t* kpage, size_t* available,const void* data, size_t size);
-
+void free_status(struct process_status *status);
 
 
 /* Starts a new thread running a user program loaded from
@@ -131,6 +131,7 @@ start_process (void *exec_)
   exec->status = thread_current()->process_status = malloc(sizeof(struct process_status));
   exec->status->tid = thread_current()->tid;
   exec->status->exit_code = -1;
+  exec->status->life = 2;
   sema_init(&exec->status->exit, 0);
   sema_up(&exec->load_done);
 
@@ -173,8 +174,8 @@ process_wait (tid_t child_tid UNUSED)
 	  /* A child can only be waited for once, after that,
 	   * remove from children list. */
 	  list_remove(e);
-	  free(status);
-
+//	  free(status);
+	  free_status(status);
 	  return code;
 	}
     }
@@ -190,12 +191,21 @@ process_exit (void)
   /* Close the file it opened including executable. */
   file_close(cur->executable);
   close_all_file ();
-
   if (cur->process_status != NULL)
     {
       printf ("%s: exit(%d)\n",cur->name, cur->process_status->exit_code);
       sema_up(&cur->process_status->exit);
+      /* Decrease lifetime of self process_status.*/
+      free_status(cur->process_status);
     }
+
+//  /* Decrease lifetime of children's process_status.*/
+//  struct list_elem *e;
+//  for (e = list_begin(&cur->children); e != list_end(&cur->children); e = list_next(e))
+//    {
+//      struct process_status* status = list_entry(e, struct process_status, elem);
+//      free_status(status);
+//    }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -635,6 +645,18 @@ push (uint8_t* kpage, size_t* available,const void* data, size_t size)
   memcpy(kpage + *available - size, data, size);
   *available -= filled_size;
 
-  /* Return start pointer of pushed data. */
+  /* Return new pointer to pushed data. */
   return kpage + *available + filled_size - size;
+}
+
+void
+free_status(struct process_status *status)
+{
+  ASSERT(status!= NULL);
+  ASSERT(status->life>0);
+  status->life--;
+  if (status->life <= 0)
+    {
+      free(status);
+    }
 }
