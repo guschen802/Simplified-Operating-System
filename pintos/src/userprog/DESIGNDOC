@@ -39,8 +39,6 @@ Jun    Wang <jwang79@buffalo.edu>
        uint8_t *kpage;                /* Pointer to start of the kernel page. */
        size_t available;              /* Available size of memory in kernel page. */
        struct process_status *status; /* Process waiting status. */
-       struct semaphore load_done;    /* Load done semaphore, 0-loading, 1-load_done. */
-       bool success;                  /* Load success flag. */
      };
 
 ---- ALGORITHMS ----
@@ -104,6 +102,7 @@ Jun    Wang <jwang79@buffalo.edu>
        /* Owned by process.c*/
        struct list children;                  /* List of its child process. */
        struct process_status* process_status; /* Pointer to current process running status. */
+       struct file *executable;			      /* The excutable file of current process. */
 
        /* Owned by syscall.c. */
        int next_fd;                           /* Next file descripte]or for opened file. */ 
@@ -116,6 +115,13 @@ Jun    Wang <jwang79@buffalo.edu>
        struct list_elem elem; /* List element. */
        struct semaphore exit; /* Semaphore for exit status, 0-running, 1-exit*/
        int exit_code;         /* Exit status flag. */
+       /* Since process_status will be access by both parent
+        * and children, and we are not sure which will
+        * terminate and be released first, we use a counter
+        * to count the lifetime of process_status
+        * after life decrease to 0, then we can release
+        * process_status. */
+       int life;			  /* Lifetime of process status. */
      };
 
    New structure added in syscall.c:
@@ -123,7 +129,7 @@ Jun    Wang <jwang79@buffalo.edu>
      {
        struct list_elem elem; /* List element. */
        int fd;                /* File descriptor. */
-       struct File file;      /* Associated file. */
+       struct file file;      /* Associated file. */
      };
 
    Add new member to struct executable (describe in section A) in process.c:
