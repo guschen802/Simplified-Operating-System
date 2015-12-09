@@ -32,6 +32,13 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+/* Function Template. */
+void donate_priority(struct lock *lock, int donated_priority);
+int thread_get_priority_target(struct thread *t);
+void thread_reset_priority (void);
+int get_max_lock_priority(struct lock *lock);
+void thread_set_donated_priority (struct thread *t, int);
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -42,7 +49,7 @@
    - up or "V": increment the value (and wake up one waiting
      thread, if any). */
 void
-sema_init (struct semaphore *sema, unsigned value) 
+sema_init (struct semaphore *sema, unsigned value)
 {
   ASSERT (sema != NULL);
 
@@ -113,11 +120,18 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters)) 
-    thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                struct thread, elem));
+  if (!list_empty (&sema->waiters))
+    thread_unblock (list_entry (list_pop_max(&sema->waiters,thread_priority_comparator_less, NULL), struct thread, elem));
+
   sema->value++;
   intr_set_level (old_level);
+
+  /* after thread unblock, yield current thread to give any
+   * possible higher priority thread which has just been waked up */
+  if (intr_context())
+    intr_yield_on_return();
+  else
+    thread_yield();
 }
 
 static void sema_test_helper (void *sema_);
@@ -196,7 +210,28 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  sema_down (&lock->semaphore);
+  /* mlfqs do not need priority donation, keep original mechanism */
+  if (thread_mlfqs)
+  {
+      sema_down (&lock->semaphore);
+  }
+  else
+    {
+      if (!sema_try_down(&lock->semaphore))
+          {
+            /* Here disable the interrupter, in order to modified the priority, we cannot
+             * use semaphore here because it will cause another priority inversion problem
+             * since what we are doing here is to deal with the priority inversion.*/
+            enum intr_level old_level;
+            thread_current()->waiting_lock = lock;
+            old_level = intr_disable ();
+            donate_priority(lock, thread_get_priority_target(thread_current()));
+            intr_set_level(old_level);
+            sema_down (&lock->semaphore);
+          }
+        thread_current()->waiting_lock = NULL;
+        list_push_back(&thread_current()->lock_list, &lock->elem);
+    }
   lock->holder = thread_current ();
 }
 
@@ -230,7 +265,12 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-
+  
+  /* mlfqs do not need priority donation, keep original mechanism */
+  if (!thread_mlfqs) {
+      list_remove(&lock->elem);
+        thread_reset_priority();
+  }
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }
@@ -316,9 +356,10 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
-  if (!list_empty (&cond->waiters)) 
-    sema_up (&list_entry (list_pop_front (&cond->waiters),
-                          struct semaphore_elem, elem)->semaphore);
+  if (!list_empty (&cond->waiters))
+    sema_up (&list_entry (list_pop_max(
+	&cond->waiters, semaphore_elem_priority_comparator_less, NULL),
+			  struct semaphore_elem, elem)->semaphore);
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
@@ -336,3 +377,80 @@ cond_broadcast (struct condition *cond, struct lock *lock)
   while (!list_empty (&cond->waiters))
     cond_signal (cond, lock);
 }
+
+/* Set thread current priority to donated priority,
+ * if donated priority is higher, success and return true
+ * else return false*/
+void
+thread_set_donated_priority (struct thread *t, int donated_priority)
+{
+  if(donated_priority > t->priority)
+    t->donated_priority = donated_priority;
+  else
+  /* If donated priority is lower than original, then reset. */
+    t->donated_priority = t->priority;
+}
+
+/* Return true if waiter(semaphore_elem) a's priority is lower*/
+bool
+semaphore_elem_priority_comparator_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  struct semaphore_elem *aSemaElem= list_entry(a, struct semaphore_elem,elem);
+  struct semaphore_elem *bSemaElem = list_entry(b, struct semaphore_elem,elem);
+
+  struct thread *aThread = list_entry(list_front(&aSemaElem->semaphore.waiters), struct thread, elem);
+  struct thread *bThread = list_entry(list_front(&bSemaElem->semaphore.waiters), struct thread, elem);
+
+  return thread_get_priority_target(aThread) < thread_get_priority_target(bThread);
+}
+
+/* Get the max priority of the thread in Lock's semephore's waiter list. */
+int get_max_lock_priority(struct lock *lock)
+{
+  ASSERT(lock != NULL);
+  if (list_empty(&lock->semaphore.waiters))
+    return PRI_MIN;
+  else
+    {
+      return thread_get_priority_target(
+	  list_entry(list_max(
+	      &lock->semaphore.waiters, thread_priority_comparator_less, NULL),
+		     struct thread,elem));
+    }
+}
+
+/* Recursively donate the priority through the chain. */
+void donate_priority(struct lock *lock, int new_priority)
+{
+  if (lock == NULL)
+    return;
+  if (lock->holder->priority < new_priority)
+    {
+      thread_set_donated_priority(lock->holder, new_priority);
+      donate_priority(lock->holder->waiting_lock, new_priority);
+    }
+}
+
+/* For priority donation, once a lock is released,
+ * it will reset the thread's priority either to
+ * original or the highest priority of the remaining
+ * holding locks.*/
+void
+thread_reset_priority (void)
+{
+  /* Multi-level feedback scheduler
+   * should not involve priority donation.  */
+  ASSERT(!thread_mlfqs);
+  struct thread *cur = thread_current();
+  int max = cur->priority;
+  struct list_elem *it;
+  for (it = list_begin(&cur->lock_list); it != list_end(&cur->lock_list); it = list_next(it))
+    {
+      struct lock *tmp_lock = list_entry(it, struct lock, elem);
+      int max_lock_priority = get_max_lock_priority(tmp_lock);
+      if (max_lock_priority > max)
+	max = max_lock_priority;
+    }
+  thread_set_donated_priority(cur, max);
+}
+

@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "fixed-point.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -87,7 +88,7 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
+    int priority;                       /* Original Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
@@ -100,6 +101,18 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+
+    /* Owned by timer.c */
+    int64_t wakeup;                         /* Wake up time */
+
+    /* Owned by synch.c. */
+    int donated_priority;               /* Donated Priority. */
+    struct list lock_list;              /* Locks current holding. */
+    struct lock *waiting_lock;          /* Lock current waiting for. */
+
+    /* Owned by thread.c. */
+    fp_real recent_cpu;                 /* CPU time the thread recent received.*/
+    int nice;                           /* The nice value for mlfqs. */
   };
 
 /* If false (default), use round-robin scheduler.
@@ -126,12 +139,18 @@ const char *thread_name (void);
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 
+/*thread status comparator*/
+bool thread_priority_comparator_less (const struct list_elem *a, const struct list_elem *b, void *aux);
+bool thread_wakeup_comparator_less (const struct list_elem *a, const struct list_elem *b, void *aux);
+bool thread_recent_cpu_comparator_less (const struct list_elem *a, const struct list_elem *b, void *aux);
+
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+void thread_reset_priority (void);
 
 int thread_get_nice (void);
 void thread_set_nice (int);

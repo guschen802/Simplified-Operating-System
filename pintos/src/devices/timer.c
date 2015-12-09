@@ -30,11 +30,16 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
+/* List of sleeping processes in THREAD_BLOCK
+ * state, that is, processes that call timer_sleep(). */
+static struct list sleeping_list;
+
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void
 timer_init (void) 
 {
+  list_init (&sleeping_list);
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
@@ -89,11 +94,22 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
+  if (ticks <= 0)
+    return;
+
+  int64_t wakeup = timer_ticks () + ticks;
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  /* Disable the interrupt in order to call thread_block().
+   * And also share  sleeping_list with timer_interrupt. */
+  enum intr_level old_level = intr_disable ();
+
+  /* Put current thread into sleeping thread list then block the thread. */
+  struct thread *cur = thread_current ();
+  cur->wakeup = wakeup;
+  list_insert_ordered(&sleeping_list, &cur->elem, thread_wakeup_comparator_less, NULL);
+  thread_block();
+  intr_set_level (old_level);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -171,6 +187,22 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+
+  /* Unblock thread in sleeping list if ticks reach the point */
+  while (!list_empty(&sleeping_list))
+    {
+      struct list_elem *p = list_front(&sleeping_list);
+      struct thread *t = list_entry(p, struct thread, elem);
+
+      if(t->wakeup <= ticks)
+	{
+	  list_remove(p);
+	  thread_unblock(t);
+        }
+      else
+	break;
+  }
+
   thread_tick ();
 }
 
