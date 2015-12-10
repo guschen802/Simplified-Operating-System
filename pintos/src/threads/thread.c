@@ -257,7 +257,7 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
   intr_set_level (old_level);
-  
+
   /* Add to run queue. */
   thread_unblock (t);
   thread_yield();
@@ -632,6 +632,13 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->lock_list);
   t->waiting_lock = NULL;
   t->magic = THREAD_MAGIC;
+  
+  #ifdef USERPROG
+  list_init(&t->children);
+  list_init(&t->opened_files);
+  t->next_fd = 2;
+  #endif
+
   if (thread_mlfqs && t!= initial_thread)
     {
       /* Inherit nice and recent value from parent thread. */
@@ -736,7 +743,8 @@ thread_schedule_tail (struct thread *prev)
 
 #ifdef USERPROG
   /* Activate the new address space. */
-  process_activate ();
+  if (cur != initial_thread)
+    process_activate ();
 #endif
 
   /* If the thread we switched from is dying, destroy its struct
@@ -768,6 +776,7 @@ schedule (void)
   ASSERT (intr_get_level () == INTR_OFF);
   ASSERT (cur->status != THREAD_RUNNING);
   ASSERT (is_thread (next));
+
   if (cur != next)
     prev = switch_threads (cur, next);
   thread_schedule_tail (prev);

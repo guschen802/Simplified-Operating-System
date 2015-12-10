@@ -1,9 +1,4 @@
 Team: Systemaniac
 Member: ChunYu Chen	<chunyuch@buffalo.edu>
-	Shuang Wu	<swu36@buffalo.edu>
-	Jun Wang	<jwang79@buffalo.edu>
-
-DESIGNDOC:./pintos/src/threads/DESIGNDOC
-final grade file: ./grade
-
-There is only one new head file: ./pintos/src/threads/fixed-point.h, there is no need to modify the makefile configuration, just make under pintos/src/threads.
+	    Shuang Wu	<swu36@buffalo.edu>
+	    Jun Wang	<jwang79@buffalo.edu>

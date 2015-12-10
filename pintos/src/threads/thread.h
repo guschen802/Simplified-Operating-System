@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "fixed-point.h"
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -24,6 +25,21 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+struct process_status
+{
+  int tid;			/* Process tid. */
+  struct list_elem elem;	/* List element. */
+  struct semaphore exit;	/* Semaphore for exit status, 0-running, 1-exit*/
+  int exit_code;		/* Exit status flag. */
+  /* Since process_status will be access by both parent
+   * and children, and we are not sure which will
+   * terminate and be released first, we use a counter
+   * to count the lifetime of process_status
+   * after life decrease to 0, then we can release
+   * process_status. */
+  int life;			/* Lifetime of process status. */
+};
 
 /* A kernel thread or user process.
 
@@ -95,8 +111,17 @@ struct thread
     struct list_elem elem;              /* List element. */
 
 #ifdef USERPROG
+    /* Owned by process.c*/
+    struct list children;			/* List of its child process. */
+    struct process_status *process_status;	/* Current process running status. */
+    struct file *executable;			/* The excutable file of current process. */
+
     /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
+    uint32_t *pagedir;                  	/* Page directory. */
+
+    /* Owned by syscall.c. */
+    int next_fd;                                /* Next file descripte]or for opened file. */
+    struct list opened_files;			/* List of files opened by this process. */
 #endif
 
     /* Owned by thread.c. */
