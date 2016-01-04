@@ -1,4 +1,10 @@
 Team: Systemaniac
-Member: ChunYu Chen	<chunyuch@buffalo.edu>
-        Shuang Wu	<swu36@buffalo.edu>
-        Jun Wang	<jwang79@buffalo.edu>
+Member: ChunYu Chen	<chunyuch@buffalo.edu>:Coding
+        Shuang Wu	<swu36@buffalo.edu>:Documenting
+        Jun Wang	<jwang79@buffalo.edu>:Documenting
+
+Master branch currently merge Project1 and Project2. With minor changes compared to both both branch to keep them working together.
+
+Test can be done under pintos/threads/build or pintos/userprog/build using make grade.
+
+System configuration guild please see pintos's user manual on internet.
