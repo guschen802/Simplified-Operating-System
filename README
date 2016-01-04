@@ -1,7 +1,7 @@
 Team: Systemaniac
-Member: ChunYu Chen	<chunyuch@buffalo.edu>
-	Shuang Wu	<swu36@buffalo.edu>
-	Jun Wang	<jwang79@buffalo.edu>
+Member: ChunYu Chen	<chunyuch@buffalo.edu>:Coding
+	Shuang Wu	<swu36@buffalo.edu>:Documenting
+	Jun Wang	<jwang79@buffalo.edu>:Documenting
 
 DESIGNDOC:./pintos/src/threads/DESIGNDOC
 final grade file: ./grade
